@@ -1,0 +1,14 @@
+pandas==2.2.*
+numpy>=1.26.4,<2
+scipy
+ta
+scikit-learn
+xgboost
+hmmlearn
+pyarrow
+fastapi
+uvicorn[standard]
+httpx
+joblib
+apscheduler
+python-dateutil

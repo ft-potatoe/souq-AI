@@ -1,0 +1,70 @@
+.anomaly-feedback {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  background: rgba(201, 168, 76, 0.08);
+  border: 1px solid rgba(201, 168, 76, 0.3);
+  border-radius: var(--radius);
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.anomaly-feedback--sent {
+  background: rgba(46, 204, 113, 0.08);
+  border-color: rgba(46, 204, 113, 0.3);
+  color: var(--green);
+  font-size: 13px;
+}
+
+.anomaly-feedback--error {
+  background: rgba(231, 76, 60, 0.08);
+  border-color: rgba(231, 76, 60, 0.3);
+  color: var(--red);
+  font-size: 13px;
+}
+
+.anomaly-label {
+  font-size: 13px;
+  color: var(--gold);
+  flex: 1;
+}
+
+.anomaly-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.anomaly-btn {
+  padding: 5px 16px;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  font-size: 13px;
+  font-weight: 500;
+  transition: opacity 0.15s;
+}
+
+.anomaly-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.anomaly-btn--yes {
+  background: rgba(46, 204, 113, 0.15);
+  border-color: rgba(46, 204, 113, 0.4);
+  color: var(--green);
+}
+
+.anomaly-btn--yes:hover:not(:disabled) {
+  background: rgba(46, 204, 113, 0.25);
+}
+
+.anomaly-btn--no {
+  background: rgba(231, 76, 60, 0.15);
+  border-color: rgba(231, 76, 60, 0.4);
+  color: var(--red);
+}
+
+.anomaly-btn--no:hover:not(:disabled) {
+  background: rgba(231, 76, 60, 0.25);
+}

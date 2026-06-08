@@ -1,0 +1,68 @@
+.analytics-panel {
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.analytics-toggle {
+  width: 100%;
+  background: var(--surface);
+  border: none;
+  padding: 8px 14px;
+  text-align: left;
+  color: var(--text-muted);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.analytics-toggle:hover {
+  background: var(--surface-2);
+}
+
+.analytics-chevron {
+  font-size: 11px;
+}
+
+.analytics-body {
+  background: var(--navy-dark);
+  padding: 12px 14px;
+  font-family: 'IBM Plex Mono', 'Consolas', monospace;
+  font-size: 12px;
+  overflow-x: auto;
+  max-height: 300px;
+  overflow-y: auto;
+  line-height: 1.7;
+}
+
+.json-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--gold);
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+
+.json-row {
+  display: block;
+}
+
+.json-children {
+  display: block;
+}
+
+.json-key { color: #79b8ff; }
+.json-str { color: #85e89d; }
+.json-num { color: #f0a500; }
+.json-bool { color: var(--maroon-light); }
+.json-null { color: var(--text-dim); }
+.json-colon { color: var(--text-muted); }
+.json-comma { color: var(--text-dim); }
+.json-bracket { color: var(--text-muted); }

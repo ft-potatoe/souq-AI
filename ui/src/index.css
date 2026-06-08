@@ -1,0 +1,67 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --navy: #0d2240;
+  --navy-light: #1a3a6b;
+  --navy-dark: #081628;
+  --maroon: #8c1b2f;
+  --maroon-light: #b5243e;
+  --gold: #c9a84c;
+  --gold-light: #e0c270;
+  --bg: #0a1929;
+  --surface: #0f2642;
+  --surface-2: #163356;
+  --border: #1e4080;
+  --text: #e8edf5;
+  --text-muted: #8ba0c0;
+  --text-dim: #4a6a9a;
+  --green: #2ecc71;
+  --red: #e74c3c;
+  --amber: #f39c12;
+  --radius: 8px;
+  --radius-lg: 12px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input, textarea {
+  font-family: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--surface);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--navy-light);
+}

@@ -1,0 +1,12 @@
+data/raw/
+data/features/
+data/regimes/
+data/feedback/
+models/
+logs/
+__pycache__/
+*.pyc
+.env
+venv/
+node_modules/
+ui/dist/

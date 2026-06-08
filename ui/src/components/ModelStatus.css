@@ -1,0 +1,45 @@
+.model-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 20px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow-x: auto;
+}
+
+.ms-model {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ms-name {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.ms-version {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--text-dim);
+}
+
+.ms-sep {
+  width: 1px;
+  height: 12px;
+  background: var(--border);
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.ms-feedback {
+  color: var(--text-dim);
+}
+
+.ms-retrain {
+  color: var(--text-dim);
+}
