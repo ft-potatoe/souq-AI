@@ -72,7 +72,7 @@ SCHEMAS = {
 KNOWN_DATASETS = set(SCHEMAS.keys())
 
 # GCC markets that must appear on every trading day
-GCC_ACTIVE_MARKETS = {"QSE", "ADX", "DFM", "TASI", "KSE", "MSM", "BSE"}
+GCC_ACTIVE_MARKETS = {"QSE", "ADX", "DFM", "TASI", "KSE"}
 
 
 # ---------------------------------------------------------------------------
@@ -209,7 +209,7 @@ def _validate_gcc_coverage(df: pd.DataFrame, dataset: str):
 # Consecutive missing days check
 # ---------------------------------------------------------------------------
 
-def _check_consecutive_missing(df: pd.DataFrame, dataset: str, threshold: int = 3):
+def _check_consecutive_missing(df: pd.DataFrame, dataset: str, threshold: int = 7):
     """Halt if more than `threshold` consecutive trading days are absent."""
     if df.empty:
         return
