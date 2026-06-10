@@ -13,7 +13,59 @@ const SUGGESTED_QUESTIONS = [
   'How does today compare to GCC peers?',
   'What are the foreign investor flows today?',
   'How does today\'s return rank historically?',
+  'What was the regime on 2024-06-15?',
+  'Was volume unusual last Tuesday?',
 ];
+
+// Day names (QSE week is Sun-Thu; Fri/Sat are non-trading days)
+const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+/**
+ * Try to extract an explicit ISO date or relative date from a question string.
+ * Returns a YYYY-MM-DD string, or null if nothing recognized.
+ */
+function parseDateFromQuestion(question, headerDate) {
+  const q = question.toLowerCase();
+  const today = headerDate ? new Date(headerDate + 'T00:00:00') : new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // Explicit ISO date: 2024-06-15
+  const isoMatch = question.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+  if (isoMatch) return isoMatch[1];
+
+  // "yesterday"
+  if (/\byesterday\b/.test(q)) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().slice(0, 10);
+  }
+
+  // "last week" / "last month"
+  if (/\blast\s+week\b/.test(q)) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - 7);
+    return d.toISOString().slice(0, 10);
+  }
+  if (/\blast\s+month\b/.test(q)) {
+    const d = new Date(today);
+    d.setMonth(d.getMonth() - 1);
+    return d.toISOString().slice(0, 10);
+  }
+
+  // "last <dayname>" or "on <dayname>"
+  const dayMatch = q.match(/\b(?:last\s+|on\s+)?(monday|tuesday|wednesday|thursday|sunday)\b/);
+  if (dayMatch) {
+    const targetDay = DAY_NAMES.indexOf(dayMatch[1]); // 0=Sun
+    const d = new Date(today);
+    // Step back until we hit the right day-of-week, max 7 days
+    for (let i = 1; i <= 7; i++) {
+      d.setDate(d.getDate() - 1);
+      if (d.getDay() === targetDay) return d.toISOString().slice(0, 10);
+    }
+  }
+
+  return null;
+}
 
 function ThumbButtons({ onUp, onDown, voted }) {
   return (
@@ -227,9 +279,14 @@ function Message({ msg, date }) {
 
             {msg.payload && <AnalyticsPanel payload={msg.payload} />}
 
-            {msg.payload?.response_time_ms != null && (
-              <div className="msg-meta">{msg.payload.response_time_ms.toFixed(0)} ms</div>
-            )}
+            <div className="msg-meta">
+              {msg.payload?.data_date && (
+                <span className="msg-meta-date">data: {msg.payload.data_date}</span>
+              )}
+              {msg.payload?.response_time_ms != null && (
+                <span>{msg.payload.response_time_ms.toFixed(0)} ms</span>
+              )}
+            </div>
           </>
         )}
       </div>
@@ -237,10 +294,11 @@ function Message({ msg, date }) {
   );
 }
 
-export default function ChatWindow({ date, disabled, onNewMessage, activeHistoryItem }) {
+export default function ChatWindow({ date, disabled, onNewMessage, onDateChange, activeHistoryItem }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [detectedDate, setDetectedDate] = useState(null);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -252,10 +310,25 @@ export default function ChatWindow({ date, disabled, onNewMessage, activeHistory
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Re-detect date whenever input changes
+  useEffect(() => {
+    const parsed = parseDateFromQuestion(input, date);
+    setDetectedDate(parsed && parsed !== date ? parsed : null);
+  }, [input, date]);
+
   async function send(question) {
     const q = (question ?? input).trim();
     if (!q || loading || !date || disabled) return;
+
+    // If a date was detected in the question, use it; also sync the header picker
+    const parsedFromQ = parseDateFromQuestion(q, date);
+    const effectiveDate = (parsedFromQ && parsedFromQ !== date) ? parsedFromQ : date;
+    if (parsedFromQ && parsedFromQ !== date && onDateChange) {
+      onDateChange(parsedFromQ);
+    }
+
     setInput('');
+    setDetectedDate(null);
     setLoading(true);
 
     const userMsg = { role: 'user', text: q };
@@ -266,7 +339,7 @@ export default function ChatWindow({ date, disabled, onNewMessage, activeHistory
       const res = await fetch('http://localhost:8000/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: q, date }),
+        body: JSON.stringify({ question: q, date: effectiveDate }),
       });
       const data = res.ok ? await res.json() : null;
       const answer = data?.answer ?? 'No response received.';
@@ -291,7 +364,7 @@ export default function ChatWindow({ date, disabled, onNewMessage, activeHistory
       onNewMessage?.({
         question: q,
         answer,
-        date,
+        date: effectiveDate,
         messages: [...messages, userMsg, { role: 'assistant', text: answer, loading: false, payload }],
       });
     } catch {
@@ -345,26 +418,38 @@ export default function ChatWindow({ date, disabled, onNewMessage, activeHistory
         ))}
         <div ref={bottomRef} />
       </div>
-      <div className="chat-input-row">
-        <textarea
-          ref={inputRef}
-          className="chat-input"
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder={disabled ? 'Loading session date...' : 'Ask about market activity, trends, anomalies... (Enter to send)'}
-          rows={2}
-          disabled={loading || disabled}
-        />
-        <button
-          className="chat-send"
-          onClick={() => send()}
-          disabled={loading || disabled || !input.trim()}
-        >
-          {loading ? (
-            <span className="send-loading"><span /><span /><span /></span>
-          ) : 'Send'}
-        </button>
+      <div className="chat-input-area">
+        {detectedDate && (
+          <div className="date-detect-chip">
+            Querying <strong>{detectedDate}</strong>
+            <button
+              className="date-detect-dismiss"
+              title="Use header date instead"
+              onClick={() => setDetectedDate(null)}
+            >&#x2715;</button>
+          </div>
+        )}
+        <div className="chat-input-row">
+          <textarea
+            ref={inputRef}
+            className="chat-input"
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder={disabled ? 'Loading session date...' : 'Ask about market activity, trends, anomalies... (Enter to send)'}
+            rows={2}
+            disabled={loading || disabled}
+          />
+          <button
+            className="chat-send"
+            onClick={() => send()}
+            disabled={loading || disabled || !input.trim()}
+          >
+            {loading ? (
+              <span className="send-loading"><span /><span /><span /></span>
+            ) : 'Send'}
+          </button>
+        </div>
       </div>
     </div>
   );

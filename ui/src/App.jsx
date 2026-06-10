@@ -72,6 +72,7 @@ export default function App() {
             date={date}
             disabled={date === null}
             onNewMessage={handleNewMessage}
+            onDateChange={setDate}
             activeHistoryItem={activeIdx != null ? history[activeIdx] : null}
           />
         </main>

@@ -268,10 +268,19 @@
 
 /* ── Meta ── */
 .msg-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   font-size: 10px;
   color: var(--text-dim);
   margin-top: 10px;
-  text-align: right;
+}
+
+.msg-meta-date {
+  font-family: 'IBM Plex Mono', 'Consolas', monospace;
+  letter-spacing: 0.03em;
+  color: var(--gold-light, #f0c060);
+  opacity: 0.7;
 }
 
 /* ── Similarity section ── */
@@ -294,13 +303,52 @@
   gap: 8px;
 }
 
+/* ── Input area (wraps chip + row) ── */
+.chat-input-area {
+  border-top: 1px solid var(--border);
+  background: var(--navy-dark);
+}
+
+/* ── Date detect chip ── */
+.date-detect-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 16px;
+  font-size: 11px;
+  color: var(--gold-light, #f0c060);
+  background: rgba(200, 160, 40, 0.08);
+  border-bottom: 1px solid rgba(200, 160, 40, 0.18);
+}
+
+.date-detect-chip strong {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.date-detect-dismiss {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+
+.date-detect-dismiss:hover {
+  opacity: 1;
+}
+
 /* ── Input row ── */
 .chat-input-row {
   display: flex;
   align-items: flex-end;
   gap: 10px;
   padding: 14px 20px;
-  border-top: 1px solid var(--border);
   background: var(--navy-dark);
 }
 
