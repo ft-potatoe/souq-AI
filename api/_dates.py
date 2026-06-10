@@ -16,12 +16,14 @@ MODEL_DIRS = {
     "anomaly_scorer":    _ROOT / "models" / "anomaly_scorer",
     "similarity_ranker": _ROOT / "models" / "similarity_ranker",
     "regime_hmm":        _ROOT / "models" / "regime_hmm",
+    "vol_hmm":           _ROOT / "models" / "vol_hmm",
 }
 
 SYMLINK_NAMES = {
     "anomaly_scorer":    "rf_anomaly_current",
     "similarity_ranker": "xgb_ranker_current",
     "regime_hmm":        "hmm_current",
+    "vol_hmm":           "vol_hmm_current",
 }
 
 

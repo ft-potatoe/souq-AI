@@ -70,6 +70,13 @@ from analytics.regime import (
     _assign_state_labels as _hmm_label_map,
     _FEATURES as _HMM_FEATURES,
 )
+from analytics.volatility_regime import (
+    fit_and_save as vol_hmm_fit,
+    _load_model as _load_vol_hmm,
+    _save_model as _save_vol_hmm,
+    _assign_state_labels as _vol_hmm_label_map,
+    _FEATURES as _VOL_HMM_FEATURES,
+)
 
 _LOG_PATH = _ROOT / "logs" / "retrain_log.jsonl"
 _MIN_ANOMALY_FEEDBACK = 10
@@ -230,6 +237,64 @@ def _step_ranker(
         return "failed"
 
 
+def _semantic_vol_labels(scaler, model, features_df: pd.DataFrame) -> np.ndarray | None:
+    clean = features_df[_VOL_HMM_FEATURES].dropna()
+    if clean.empty:
+        return None
+    raw_ids = model.predict(scaler.transform(clean.values))
+    label_map = _vol_hmm_label_map(model)
+    return np.array([label_map[s] for s in raw_ids])
+
+
+def _step_vol_hmm(
+    features_df: pd.DataFrame,
+    errors: dict,
+    metrics: dict,
+) -> str:
+    """Step 6b: refit vol HMM. Returns deployment status. Failure is non-blocking."""
+    log.info("vol_hmm: refitting on %d sessions.", len(features_df))
+
+    prior = _load_vol_hmm()
+    if prior is not None:
+        old_scaler, old_model = prior
+        old_labels = _semantic_vol_labels(old_scaler, old_model, features_df)
+    else:
+        old_labels = None
+
+    try:
+        path = vol_hmm_fit(features_df)
+    except ValueError as exc:
+        msg = str(exc)
+        log.warning("vol_hmm fit failed (non-blocking): %s", msg)
+        errors["vol_hmm"] = msg
+        return "failed"
+
+    log.info("vol_hmm saved -> %s", path)
+
+    flip = 0.0
+    if old_labels is not None:
+        new_artifact = _load_vol_hmm()
+        if new_artifact is not None:
+            new_scaler, new_model = new_artifact
+            new_labels = _semantic_vol_labels(new_scaler, new_model, features_df)
+            if new_labels is not None:
+                flip = _flip_rate(old_labels, new_labels)
+                log.info("vol_hmm label-flip rate: %.1f%%", flip * 100)
+                if flip > _MAX_FLIP_RATE:
+                    msg = (
+                        f"vol label-flip rate {flip:.1%} > {_MAX_FLIP_RATE:.1%}; "
+                        "prior model restored"
+                    )
+                    log.warning("vol_hmm: %s (non-blocking)", msg)
+                    _save_vol_hmm(old_scaler, old_model)
+                    errors["vol_hmm"] = msg
+                    metrics["vol_hmm"] = {"flip_rate": round(flip, 6)}
+                    return "failed"
+
+    metrics["vol_hmm"] = {"flip_rate": round(flip, 6)}
+    return "deployed"
+
+
 def _step_hmm(
     features_df: pd.DataFrame,
     errors: dict,
@@ -310,6 +375,7 @@ def main() -> int:
         "anomaly_scorer": None,
         "similarity_ranker": None,
         "regime_hmm": None,
+        "vol_hmm": None,
     }
 
     # Step 2: build training labels (done inside each model's train_and_save)
@@ -328,12 +394,18 @@ def main() -> int:
     log.info("Step 6: regime_hmm.")
     model_status["regime_hmm"] = _step_hmm(features_df, errors, metrics)
 
+    # Step 6b: volatility regime HMM (additive; failure does not block overall status)
+    log.info("Step 6b: vol_hmm.")
+    model_status["vol_hmm"] = _step_vol_hmm(features_df, errors, metrics)
+
     # Step 7: reload API workers
     log.info("Step 7: API reload.")
     reload_result = _reload_api()
 
     # Step 8: write retrain_log.jsonl
-    any_failed = any(v == "failed" for v in model_status.values())
+    # vol_hmm is additive — its failure does not drive overall status to "failed"
+    core_models = {"anomaly_scorer", "similarity_ranker", "regime_hmm"}
+    any_failed = any(v == "failed" for k, v in model_status.items() if k in core_models)
     overall_status = "failed" if any_failed else "success"
 
     entry = {

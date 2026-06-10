@@ -6,7 +6,7 @@
 **LLM Runtime:** Ollama (local machine), Qwen3 14B
 **Language:** English
 **Last updated:** June 2026
-**Changelog:** v2.2 — React UI completed (chat interface, anomaly gauge, similarity charts, analytics panels, regime history timeline); v2.1 — Fixed data leakage constraint in similarity ranker (§7.2); added token budget and bucket priority to query router (§12.4)
+**Changelog:** v2.3 — Added `analytics/summary.py` (all-time/52-week/YTD high-low records, best/worst day, streaks, up/down day counts); added `volatility_regime` bucket to router; wired both into query pipeline; v2.2 — React UI completed; v2.1 — Fixed data leakage constraint in similarity ranker (§7.2); added token budget and bucket priority to query router (§12.4)
 
 ---
 
@@ -416,7 +416,46 @@ def pressure_trend(net_series, window=10) -> dict
 }
 ```
 
-### 6.6 GCC Benchmarking — `analytics/gcc.py`
+### 6.6 Historical Summary — `analytics/summary.py`
+
+**Questions answered:** What is the all-time high/low of the index? What was the best/worst single day ever? How many up days YTD? What is the current winning/losing streak?
+
+**Time windows:** All-time, 52-week (rolling 252 sessions), YTD.
+
+**Metrics covered:** `close`, `open`, `high`, `low`, `volume`, `value_traded`, `total_trades`, `return_1d`, `return_5d`, `return_20d`
+
+**Output schema:**
+```json
+{
+  "as_of_date": "2026-06-04",
+  "total_sessions": 599,
+  "records": {
+    "close": {
+      "all_time": {"high": {"value": 11648.81, "date": "2024-05-12"}, "low": {"value": 9279.05, "date": "2024-01-03"}},
+      "52_week":  {"high": {"value": 11648.81, "date": "2024-05-12"}, "low": {"value": 9279.05, "date": "2024-01-03"}},
+      "ytd":      {"high": {"value": 10900.12, "date": "2026-01-15"}, "low": {"value": 9800.44, "date": "2026-03-10"}}
+    },
+    "volume": { "...": "..." }
+  },
+  "best_day":  {"value": 0.0423, "date": "2024-10-08"},
+  "worst_day": {"value": -0.0381, "date": "2024-03-12"},
+  "best_day_ytd":  {"value": 0.0210, "date": "2026-02-03"},
+  "worst_day_ytd": {"value": -0.0298, "date": "2026-03-23"},
+  "current_winning_streak": 3,
+  "current_losing_streak":  0,
+  "avg_daily_return_alltime": 0.000182,
+  "avg_daily_return_52w":    -0.000041,
+  "avg_daily_return_ytd":    -0.000310,
+  "up_days_alltime": 312,
+  "down_days_alltime": 271,
+  "up_days_ytd": 54,
+  "down_days_ytd": 63
+}
+```
+
+**Router keywords:** `all time`, `all-time`, `record`, `highest ever`, `lowest ever`, `best day`, `worst day`, `biggest gain`, `biggest loss`, `52 week`, `year high`, `year low`, `ytd`, `winning streak`, `losing streak`, `highest close`, `highest volume`, `average daily return`, `how many up days`
+
+### 6.7 GCC Benchmarking — `analytics/gcc.py`
 
 **Questions answered:** Is QSE outperforming or underperforming GCC peers? How has the spread changed this week?
 
@@ -681,15 +720,17 @@ BUCKET_KEYWORDS = {
 }
 
 BUCKET_PRIORITY = [
-    "anomaly",       # 1 - always include if fired
-    "regime",        # 2 - always include; essential context
-    "flows",         # 3 - core daily operational concern
-    "distribution",  # 4 - answers "how unusual" questions
-    "trend",         # 5 - directional context
-    "similarity",    # 6 - historical analogy; rich but large
-    "gcc",           # 7 - regional benchmarking
-    "correlation",   # 8 - relationship analysis
-    "seasonality",   # 9 - background context; lowest urgency
+    "anomaly",            # 1 - always include if fired
+    "regime",             # 2 - always include; essential context
+    "volatility_regime",  # 3 - vol environment; pairs with regime
+    "summary",            # 4 - historical records and extremes
+    "flows",              # 5 - core daily operational concern
+    "distribution",       # 6 - answers "how unusual" questions
+    "trend",              # 7 - directional context
+    "similarity",         # 8 - historical analogy; rich but large
+    "gcc",                # 9 - regional benchmarking
+    "correlation",        # 10 - relationship analysis
+    "seasonality",        # 11 - background context; lowest urgency
 ]
 
 PAYLOAD_TOKEN_BUDGET = 3500   # leaves headroom for system prompt + response
@@ -857,7 +898,9 @@ souq-AI/
 │   ├── seasonality.py
 │   ├── flows.py
 │   ├── gcc.py
-│   └── regime.py
+│   ├── regime.py
+│   ├── summary.py          # all-time/52w/YTD records, streaks, best/worst day
+│   └── volatility_regime.py
 ├── ml/
 │   ├── anomaly_scorer.py
 │   └── similarity_ranker.py
@@ -1136,4 +1179,7 @@ cd ui && npm run dev
 | React UI — analytics panels | `AnalyticsPanel.jsx` | Done |
 | React UI — regime history | `RegimeHistory.jsx` | Done |
 | React UI — model status | `ModelStatus.jsx` | Done |
+| Historical summary analytics | `analytics/summary.py` | Done |
+| Volatility regime analytics | `analytics/volatility_regime.py` | Done |
+| Query router — summary + volatility_regime buckets | `llm/router.py` | Done |
 | Full test suite | 350 tests | Pass |

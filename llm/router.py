@@ -32,6 +32,12 @@ BUCKET_KEYWORDS: dict[str, list[str]] = {
         "regime", "bull", "bear", "sideways", "market state", "trend state",
         "market phase", "hmm",
     ],
+    "volatility_regime": [
+        "volatil", "vol regime", "low vol", "high vol", "low volatility", "high volatility",
+        "vix", "risk environment", "options", "implied vol", "realized vol",
+        "vol spike", "vol elevated", "vol compressed", "vol percentile",
+        "annualised vol", "annualized vol", "market risk", "vol regime",
+    ],
     "flows": [
         "flow", "foreign", "domestic", "buying", "buy volume", "buy pressure",
         "foreign buy", "domestic buy", "selling", "sold", "pressure",
@@ -68,6 +74,7 @@ BUCKET_KEYWORDS: dict[str, list[str]] = {
 BUCKET_PRIORITY: list[str] = [
     "anomaly",
     "regime",
+    "volatility_regime",
     "summary",
     "flows",
     "distribution",
@@ -208,7 +215,7 @@ def build_llm_payload(
 # Question -> bucket matching
 # ---------------------------------------------------------------------------
 
-_DEFAULT_BUCKETS: list[str] = ["trend", "distribution", "regime"]
+_DEFAULT_BUCKETS: list[str] = ["trend", "distribution", "regime", "volatility_regime"]
 
 
 def match_buckets(question: str) -> list[str]:

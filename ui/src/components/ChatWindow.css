@@ -205,6 +205,13 @@
   color: var(--text-muted);
 }
 
+.regime-inline-divider {
+  color: var(--border);
+  margin: 0 2px;
+  font-size: 11px;
+  user-select: none;
+}
+
 /* ── Loading dots ── */
 .msg-loading {
   display: flex;

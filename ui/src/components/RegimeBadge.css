@@ -1,3 +1,9 @@
+.regime-badge-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .regime-badge {
   display: flex;
   align-items: center;
@@ -7,6 +13,11 @@
   border: 1px solid var(--border);
   font-size: 12px;
   white-space: nowrap;
+}
+
+.regime-badge--vol {
+  font-size: 11px;
+  padding: 4px 10px;
 }
 
 .regime-badge--loading,

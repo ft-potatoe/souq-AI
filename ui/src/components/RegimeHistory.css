@@ -38,14 +38,32 @@
   padding: 6px 0;
 }
 
+/* ── Timeline wrap (label + bar) ── */
+.rh-timeline-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.rh-timeline-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  width: 28px;
+  flex-shrink: 0;
+}
+
 /* ── Timeline bar ── */
 .rh-timeline {
   display: flex;
-  height: 22px;
+  flex: 1;
+  height: 18px;
   border-radius: 4px;
   overflow: hidden;
   gap: 1px;
-  margin-bottom: 12px;
 }
 
 .rh-seg {
@@ -73,6 +91,11 @@
 }
 
 /* ── Sections ── */
+.rh-timeline-wrap + .rh-transitions,
+.rh-timeline-wrap + .rh-segments {
+  margin-top: 8px;
+}
+
 .rh-section-title {
   font-size: 10px;
   font-weight: 600;
@@ -130,6 +153,13 @@
 .rh-seg-label-sm {
   font-weight: 600;
   width: 60px;
+}
+
+.rh-seg-vol {
+  font-size: 10px;
+  font-weight: 600;
+  width: 52px;
+  opacity: 0.85;
 }
 
 .rh-seg-dates {

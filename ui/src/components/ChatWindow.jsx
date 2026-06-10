@@ -192,16 +192,26 @@ function InlineText({ text }) {
   );
 }
 
+const TREND_COLORS = { bull: 'var(--green)', bear: 'var(--red)', sideways: 'var(--amber)' };
+const VOL_COLORS = { low_vol: 'var(--teal,#1abc9c)', high_vol: 'var(--purple,#9b59b6)' };
+const VOL_LABELS = { low_vol: 'Low Vol', high_vol: 'High Vol' };
+
 function RegimeInline({ regime }) {
   if (!regime) return null;
-  const COLORS = { bull: 'var(--green)', bear: 'var(--red)', sideways: 'var(--amber)' };
-  const color = COLORS[regime.current_regime] ?? 'var(--text-muted)';
+  const tColor = TREND_COLORS[regime.current_regime] ?? 'var(--text-muted)';
   const prob = regime.regime_probability != null ? Math.round(regime.regime_probability * 100) : null;
+
+  const vColor = VOL_COLORS[regime.vol_regime] ?? null;
+  const vLabel = VOL_LABELS[regime.vol_regime] ?? null;
+  const volPct = regime.volatility_20d_percentile != null
+    ? Math.round(regime.volatility_20d_percentile)
+    : null;
 
   return (
     <div className="regime-inline">
-      <span className="regime-inline-dot" style={{ background: color }} />
-      <span className="regime-inline-label" style={{ color }}>
+      {/* Trend pill */}
+      <span className="regime-inline-dot" style={{ background: tColor }} />
+      <span className="regime-inline-label" style={{ color: tColor }}>
         {regime.current_regime?.charAt(0).toUpperCase() + regime.current_regime?.slice(1)} regime
       </span>
       {prob != null && <span className="regime-inline-prob">{prob}%</span>}
@@ -210,6 +220,20 @@ function RegimeInline({ regime }) {
       )}
       {regime.regime_start_date && (
         <span className="regime-inline-meta">since {regime.regime_start_date}</span>
+      )}
+
+      {/* Vol regime pill — separated by a divider */}
+      {vColor && (
+        <>
+          <span className="regime-inline-divider">|</span>
+          <span className="regime-inline-dot" style={{ background: vColor }} />
+          <span className="regime-inline-label" style={{ color: vColor }}>{vLabel}</span>
+          {volPct != null && (
+            <span className="regime-inline-meta" style={{ color: vColor, opacity: 0.85 }}>
+              {volPct}th pct
+            </span>
+          )}
+        </>
       )}
     </div>
   );

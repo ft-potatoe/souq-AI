@@ -13,6 +13,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 
 from analytics import distribution, trend, correlation, seasonality, flows, gcc, regime as regime_mod, summary
+from analytics import volatility_regime as vol_regime_mod
 from ml import anomaly_scorer, similarity_ranker
 from llm.router import match_buckets, build_llm_payload
 from llm.prompts import SYSTEM_PROMPT, build_prompt
@@ -32,14 +33,15 @@ router = APIRouter()
 
 # Maps bucket name -> analytics callable
 _ANALYTICS_DISPATCH: dict[str, Any] = {
-    "distribution": distribution.run,
-    "trend":        trend.run,
-    "correlation":  correlation.run,
-    "seasonality":  seasonality.run,
-    "flows":        flows.run,
-    "gcc":          gcc.run,
-    "regime":       regime_mod.run,
-    "summary":      summary.run,
+    "distribution":      distribution.run,
+    "trend":             trend.run,
+    "correlation":       correlation.run,
+    "seasonality":       seasonality.run,
+    "flows":             flows.run,
+    "gcc":               gcc.run,
+    "regime":            regime_mod.run,
+    "volatility_regime": vol_regime_mod.run,
+    "summary":           summary.run,
 }
 
 
@@ -102,9 +104,17 @@ async def post_query(req: QueryRequest) -> QueryResponse:
         raise HTTPException(status_code=503, detail=f"LLM unavailable: {exc}")
 
     # 5. Build structured response fields
+    # When trend regime was run, also run vol regime if not already matched
+    if "regime" in bucket_results and "volatility_regime" not in bucket_results:
+        try:
+            bucket_results["volatility_regime"] = vol_regime_mod.run(date_str, {})
+        except Exception as exc:
+            log.warning("Vol regime auto-run failed for %s: %s", date_str, exc)
+
     regime_context: RegimeContext | None = None
     if "regime" in bucket_results:
         r = bucket_results["regime"]
+        v = bucket_results.get("volatility_regime", {})
         regime_context = RegimeContext(
             date=r.get("date", date_str),
             current_regime=r.get("current_regime", "unknown"),
@@ -112,6 +122,14 @@ async def post_query(req: QueryRequest) -> QueryResponse:
             sessions_in_current_regime=r.get("sessions_in_current_regime"),
             regime_start_date=r.get("regime_start_date"),
             prior_regime=r.get("prior_regime"),
+            vol_regime=v.get("vol_regime"),
+            vol_regime_probability=v.get("vol_regime_probability"),
+            vol_regime_sessions=v.get("vol_regime_sessions"),
+            vol_regime_start_date=v.get("vol_regime_start_date"),
+            prior_vol_regime=v.get("prior_vol_regime"),
+            volatility_20d_current=v.get("volatility_20d_current"),
+            volatility_20d_percentile=v.get("volatility_20d_percentile"),
+            volatility_60d_current=v.get("volatility_60d_current"),
         )
 
     anomaly_assessment: AnomalyAssessment | None = None

@@ -52,6 +52,13 @@ It never performs calculations and never invents statistics.
 - Regime HMM: GaussianHMM(n_components=3) in analytics/regime.py
   Minimum 250 sessions before surfacing labels
   State label assignment: sort by mean return_1d -> bear/sideways/bull
+- Volatility Regime HMM: GaussianHMM(n_components=2) in analytics/volatility_regime.py
+  Completely independent of trend HMM — direction-agnostic by design
+  Features: volatility_20d, volatility_60d, volume_zscore, breadth_ratio
+  State label assignment: sort by mean volatility_20d -> low_vol/high_vol
+  Minimum 250 sessions before surfacing labels; flip-rate gate <= 10%
+  Model artifact: models/vol_hmm/vol_hmm_v1.pkl, symlink vol_hmm_current
+  Additional output: volatility_20d_percentile (rank vs full history)
 
 ## Feature engineering notes (scripts/features/build_features.py)
 - Price column is `close` (not index_value)
@@ -86,7 +93,9 @@ It never performs calculations and never invents statistics.
 - Schedule: every Sunday at 02:00
 - Models only deploy if they pass validation gates
 - Rollback: python scripts/models/rollback.py --model [name] --version v1
-  (all three models currently write only one versioned artifact: *_v1.pkl)
+  (all three core models currently write only one versioned artifact: *_v1.pkl)
+- Vol HMM standalone: python scripts/retrain/train_vol_hmm.py
+  (no --force flag; no minimum-feedback threshold; always retrains like trend HMM)
 
 ## scripts/retrain/ — implementation notes
 - Feedback thresholds checked via feedback_counts(); pop "since" key before reading counts.
@@ -100,17 +109,23 @@ It never performs calculations and never invents statistics.
 - HMM deployment is atomic: load the prior (scaler, model) into memory before calling
   fit_and_save(), then call _save_model(old_scaler, old_model) to restore if the flip-rate
   gate fails. The pipeline never leaves a regime model live that failed its own gate.
-- weekly_retrain.py writes status="success" only when every non-skipped model deployed.
-  Any failure writes status="failed", so feedback_counts() re-counts all items since the
+- The same atomic flip-rate pattern applies to the vol HMM in _step_vol_hmm().
+  vol HMM failure is NON-BLOCKING — it does not set overall_status="failed".
+  Only the three core models (anomaly_scorer, similarity_ranker, regime_hmm) drive
+  overall_status. The `any_failed` check explicitly filters to `core_models`.
+- weekly_retrain.py writes status="success" only when every non-skipped CORE model deployed.
+  Any core failure writes status="failed", so feedback_counts() re-counts all items since the
   last fully-successful run next week (intentionally conservative).
 - API reload (step 7): set UVICORN_PID env var to the uvicorn process PID. Sends SIGHUP on
   Unix, CTRL_BREAK_EVENT on Windows. Skipped (not a failure) if UVICORN_PID is unset.
 - Standalone scripts (train_anomaly.py, train_ranker.py) accept --force to bypass the
-  minimum-feedback threshold check. train_hmm.py has no threshold and no --force flag.
+  minimum-feedback threshold check. train_hmm.py and train_vol_hmm.py have no threshold
+  and no --force flag.
 - All _load_artifact / _load_model imports in weekly_retrain.py are at module top-level
-  (not deferred inside functions). This includes _load_ranker from ml.similarity_ranker.
+  (not deferred inside functions). This includes _load_ranker from ml.similarity_ranker
+  and _load_vol_hmm from analytics.volatility_regime.
 - rollback.py resolves the artifact as <stem>_<version>.pkl. Currently only v1 exists for
-  all three models. If the file is absent the script lists what is available and exits 1.
+  all three core models. Vol HMM is NOT covered by rollback.py (additive model).
 
 ## API endpoints (FastAPI, api/main.py)
 POST /query, GET /regime/current, GET /regime/history,
@@ -123,7 +138,7 @@ GET /anomaly/{date}, POST /feedback, GET /models/status, GET /health
 - Ramadan flag: hard-coded ranges in RAMADAN_RANGES (2018-2026) in build_features.py
 
 ## File naming conventions
-- Analytics modules: analytics/{distribution,trend,correlation,seasonality,flows,gcc,regime}.py
+- Analytics modules: analytics/{distribution,trend,correlation,seasonality,flows,gcc,regime,volatility_regime}.py
 - Each exposes: run(date, params) -> dict
 - ML modules: ml/{anomaly_scorer,similarity_ranker}.py
 - Feedback module: feedback/store.py
@@ -135,6 +150,7 @@ GET /anomaly/{date}, POST /feedback, GET /models/status, GET /health
                                                includes forward_return_5d/10d/20d for similarity ranker
 - [DONE] End-to-end test: 300 trading days, all sanity checks pass
 - [DONE] analytics/ modules (distribution, trend, correlation, seasonality, flows, gcc, regime)
+- [DONE] analytics/volatility_regime.py     — 2-state vol HMM; low_vol/high_vol; vol percentile output
 - [DONE] ml/anomaly_scorer.py               — RF anomaly scorer; tests/test_anomaly_scorer.py (44 tests)
 - [DONE] ml/similarity_ranker.py            — k-NN(40) + XGBRanker re-score to top-10; safe_forward_returns leakage guard; 80/20 holdout NDCG@10 validation; tests/test_similarity_ranker.py (54 tests)
 - [DONE] tests/test_features.py             — 66 tests (added TestForwardReturns, 7 tests)
@@ -142,15 +158,19 @@ GET /anomaly/{date}, POST /feedback, GET /models/status, GET /health
 - [DONE] Full test suite: 350 tests, all passing
 - [DONE] llm/interface.py  — query_llm(prompt, system) -> str; httpx POST to Ollama localhost:11434; qwen3:14b; temp=0.1, top_p=0.9, num_predict=1024, timeout=120s, stream=False
 - [DONE] llm/prompts.py    — SYSTEM_PROMPT (11 rules, spec §11.2); build_prompt(question, payload) -> str (spec §11.3)
-- [DONE] llm/router.py     — BUCKET_KEYWORDS (9 buckets), BUCKET_PRIORITY, PAYLOAD_TOKEN_BUDGET=3500; match_buckets(); build_llm_payload(); compress_bucket(); estimate_tokens()
+- [DONE] llm/router.py     — BUCKET_KEYWORDS (10 buckets), BUCKET_PRIORITY, PAYLOAD_TOKEN_BUDGET=3500; match_buckets(); build_llm_payload(); compress_bucket(); estimate_tokens()
 - [DONE] api/ (main.py, endpoints/)               — all 10 spec endpoints; Pydantic models; CORS for localhost:5173
                                                    Start: uvicorn api.main:app --reload --port 8000
-- [DONE] scripts/retrain/weekly_retrain.py  — 8-step pipeline; feedback thresholds (anomaly>=10, ranker>=20); HMM always retrains; logs/retrain_log.jsonl; UVICORN_PID reload
+- [DONE] scripts/retrain/weekly_retrain.py  — 8-step pipeline + step 6b (vol HMM); feedback thresholds (anomaly>=10, ranker>=20); HMM always retrains; logs/retrain_log.jsonl; UVICORN_PID reload
 - [DONE] scripts/retrain/train_anomaly.py  — standalone anomaly_scorer retrainer; --force flag
 - [DONE] scripts/retrain/train_ranker.py   — standalone similarity_ranker retrainer; --force flag
-- [DONE] scripts/retrain/train_hmm.py      — standalone HMM refitter; semantic flip-rate gate; atomic rollback on failure
+- [DONE] scripts/retrain/train_hmm.py      — standalone trend HMM refitter; semantic flip-rate gate; atomic rollback on failure
+- [DONE] scripts/retrain/train_vol_hmm.py  — standalone vol HMM refitter; semantic flip-rate gate; atomic rollback on failure
 - [DONE] scripts/models/rollback.py        — updates _current symlink/ptr; logs rollback entry to retrain_log.jsonl
-- [TODO] ui/ React components
+- [DONE] ui/ React components              — ChatWindow (date-aware queries, date chip, detected-date sync),
+                                             RegimeBadge (trend + vol pills), RegimeHistory (dual timelines),
+                                             RegimeInline (vol pill in chat), AnomalyIndicator, SimilarityCard,
+                                             SimilarityChart, AnalyticsPanel
 
 ## feedback/store.py — implementation notes
 - feedback_counts() returns a dict with one key per feedback_type (count) PLUS a
@@ -167,7 +187,7 @@ GET /anomaly/{date}, POST /feedback, GET /models/status, GET /health
 ## llm/router.py — implementation notes
 - build_llm_payload() re-estimates estimate_tokens(payload) after each bucket is tentatively
   added — do NOT accumulate standalone bucket sizes; the JSON envelope overhead makes the sum
-  undercount and the budget guarantee would be violated with 9 full-size buckets.
+  undercount and the budget guarantee would be violated with 10 full-size buckets.
 - compress_bucket() uses copy.deepcopy() for similarity and gcc — never dict() shallow copy,
   which shares nested object references and would mutate the caller's result dict.
 - "sell" is NOT a flows keyword — it triggers advisory false positives ("Should I sell?").
@@ -189,20 +209,34 @@ GET /anomaly/{date}, POST /feedback, GET /models/status, GET /health
 - "vs" (no trailing space) is the gcc keyword — "vs " missed "vs." and end-of-string.
 - Compression is only attempted when a bucket would push the payload over budget; it is not
   applied unconditionally. Callers must not assume similarity is always trimmed to 3 matches.
+- volatility_regime bucket keywords: "volatil", "vol regime", "low vol", "high vol",
+  "options", "risk environment", "vol percentile", "vol spike", "vol compressed", etc.
+  Bucket sits between regime and summary in BUCKET_PRIORITY.
+  _DEFAULT_BUCKETS now includes "volatility_regime" so every unmatched question gets vol context.
 
 ## api/ — implementation notes
 - Entry point: api/main.py; run with uvicorn api.main:app --reload --port 8000
 - Shared helpers in api/_dates.py: resolve_date() (defaults to latest features_master row),
   symlink_target(), model_versions_snapshot(), MODEL_DIRS (all public)
+  MODEL_DIRS now includes "vol_hmm" -> models/vol_hmm/; SYMLINK_NAMES["vol_hmm"] = "vol_hmm_current"
 - POST /query pipeline: match_buckets -> analytics dispatch -> build_llm_payload ->
   build_prompt -> query_llm (run in thread executor — it is sync/blocking) -> QueryResponse
+- POST /query auto-runs volatility_regime.run() whenever "regime" bucket is matched and
+  "volatility_regime" was not already in the matched buckets. Both results are merged into
+  RegimeContext. Never skip the auto-run — vol regime is always useful with trend regime.
 - query_llm (llm/interface.py) uses httpx.Client (sync, 120 s). All callers in async handlers
   MUST use asyncio.to_thread(query_llm, prompt, system) — never call directly.
   Similarly regime.run() and _build_regime_history() are offloaded with asyncio.to_thread().
   Do NOT use get_event_loop().run_in_executor() or functools.partial — asyncio.to_thread is
   the correct idiom for Python 3.9+ and avoids the deprecated get_event_loop() path.
-- GET /regime/history uses a single HMM decode pass via regime._decode() + _assign_state_labels()
-  over the full features_master. Never call regime.run() per row — O(N) model.predict() calls.
+- GET /regime/current merges vol regime via _merge_vol() helper; vol failure is non-fatal
+  (sets vol_regime=None, logs warning).
+- GET /regime/history decodes BOTH HMMs in single passes (never per-row predict calls).
+  Trend and vol sequences are aligned by date into per-row {regime, vol_regime} dicts.
+  Vol decode failure is non-fatal — rows simply have vol_regime=None.
+- RegimeContext Pydantic model now carries 8 additional optional vol fields:
+  vol_regime, vol_regime_probability, vol_regime_sessions, vol_regime_start_date,
+  prior_vol_regime, volatility_20d_current, volatility_20d_percentile, volatility_60d_current.
 - Analytics run() and ML score/rank calls in POST /query are synchronous CPU work (pandas/
   sklearn/numpy); parquet reads are lru_cache-cached after the first request. They are called
   directly (not via to_thread) — adding thread overhead for pure CPU work on a single-user
@@ -213,6 +247,34 @@ GET /anomaly/{date}, POST /feedback, GET /models/status, GET /health
   feedback/store._last_retrain_ts(). Failed retrain entries are intentionally excluded.
 - GET /health probes Ollama at /api/tags with a 3 s async timeout; reports "degraded" (not 500)
   when Ollama or features are unavailable.
+
+## analytics/volatility_regime.py — implementation notes
+- Completely independent of analytics/regime.py — different model path, different features,
+  different label set. Never share model artifacts between the two HMMs.
+- _assign_state_labels(model) takes only the model (no feature_names arg) — the vol index
+  is always index 0 of _FEATURES by definition.
+- run() returns vol_regime=None with a note when < 250 clean sessions are available.
+  Callers (API, UI) must handle None gracefully — the model is additive, not required.
+- volatility_20d_percentile: fraction of all history rows where volatility_20d < current.
+  A value of 85 means vol is higher than 85% of all historical sessions.
+- Model artifact: models/vol_hmm/vol_hmm_v1.pkl  (dict with keys "scaler", "model")
+  Symlink: models/vol_hmm/vol_hmm_current  (or .ptr file on Windows without dev mode)
+
+## ui/ — implementation notes
+- ChatWindow date-aware queries: parseDateFromQuestion() extracts ISO dates (YYYY-MM-DD)
+  and relative terms (yesterday, last Tuesday, last week, last month) from question text.
+  Detected date shown as a yellow chip above the input; ✕ dismisses it without using it.
+  When send() fires, effectiveDate is used in the API call and onDateChange syncs the header
+  date picker. The detected date also appears as "data: YYYY-MM-DD" in the response meta.
+- ChatWindow passes onDateChange={setDate} from App.jsx — always wire this prop.
+- RegimeBadge renders two pills: trend (green/red/amber) + vol (teal=low_vol, purple=high_vol).
+  Vol pill shows the volatility_20d percentile rank.
+- RegimeInline (inside ChatWindow message bubble) shows both regimes separated by a | divider.
+- RegimeHistory shows two stacked timeline bars (Trend + Vol) labelled on the left.
+  Vol timeline only renders when vol_regime data is present in the history rows.
+  Segment list shows dominant vol regime per trend span (majority vote over span rows).
+- Teal/purple CSS vars for vol: use var(--teal,#1abc9c) and var(--purple,#9b59b6) with
+  inline fallbacks since these vars may not be defined in the global CSS.
 
 ## ml/anomaly_scorer.py — implementation notes
 - _cross_val_metrics(X, y) takes no model arg — always uses _RF_PARAMS internally

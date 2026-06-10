@@ -60,6 +60,15 @@ class RegimeContext(BaseModel):
     sessions_in_current_regime: int | None = None
     regime_start_date: str | None = None
     prior_regime: str | None = None
+    # Volatility regime (orthogonal to trend regime)
+    vol_regime: str | None = None
+    vol_regime_probability: float | None = None
+    vol_regime_sessions: int | None = None
+    vol_regime_start_date: str | None = None
+    prior_vol_regime: str | None = None
+    volatility_20d_current: float | None = None
+    volatility_20d_percentile: float | None = None
+    volatility_60d_current: float | None = None
 
 
 class QueryResponse(BaseModel):
