@@ -156,8 +156,8 @@ GET /anomaly/{date}, POST /feedback, GET /models/status, GET /health
 - [DONE] tests/test_features.py             — 66 tests (added TestForwardReturns, 7 tests)
 - [DONE] feedback/store.py                  — SQLite store at data/feedback/feedback.db; 34 tests in tests/test_feedback_store.py
 - [DONE] Full test suite: 350 tests, all passing
-- [DONE] llm/interface.py  — query_llm(prompt, system) -> str; httpx POST to Ollama localhost:11434; qwen3:14b; temp=0.1, top_p=0.9, num_predict=1024, timeout=120s, stream=False
-- [DONE] llm/prompts.py    — SYSTEM_PROMPT (11 rules, spec §11.2); build_prompt(question, payload) -> str (spec §11.3)
+- [DONE] llm/interface.py  — query_llm(prompt, system) -> str; httpx POST to Ollama localhost:11434; qwen2.5:1.5b; temp=0.1, top_p=0.9, num_predict=300, num_ctx=8192, timeout=600s, stream=False
+- [DONE] llm/prompts.py    — SYSTEM_PROMPT (11 rules, spec §11.2); build_prompt(question, payload, history=None) -> str; multi-turn history injection
 - [DONE] llm/router.py     — BUCKET_KEYWORDS (10 buckets), BUCKET_PRIORITY, PAYLOAD_TOKEN_BUDGET=3500; match_buckets(); build_llm_payload(); compress_bucket(); estimate_tokens()
 - [DONE] api/ (main.py, endpoints/)               — all 10 spec endpoints; Pydantic models; CORS for localhost:5173
                                                    Start: uvicorn api.main:app --reload --port 8000
@@ -209,10 +209,35 @@ GET /anomaly/{date}, POST /feedback, GET /models/status, GET /health
 - "vs" (no trailing space) is the gcc keyword — "vs " missed "vs." and end-of-string.
 - Compression is only attempted when a bucket would push the payload over budget; it is not
   applied unconditionally. Callers must not assume similarity is always trimmed to 3 matches.
+- compress_bucket() for "similarity" trims key "top_matches" (not "matches") — that is the
+  key returned by similarity_ranker.rank(). Never change this key without updating both places.
 - volatility_regime bucket keywords: "volatil", "vol regime", "low vol", "high vol",
   "options", "risk environment", "vol percentile", "vol spike", "vol compressed", etc.
   Bucket sits between regime and summary in BUCKET_PRIORITY.
   _DEFAULT_BUCKETS now includes "volatility_regime" so every unmatched question gets vol context.
+
+## llm/prompts.py — implementation notes
+- build_prompt(question, payload, history=None) assembles the user-turn prompt in three parts:
+  analytics JSON, optional history block, question. Parts are joined with double newlines.
+- History is injected as plain text ("Conversation so far:\nUser: ...\nAssistant: ...") inside
+  the single /api/generate prompt string. This is intentional — the system uses /api/generate,
+  not /api/chat. The model reads prior turns as labeled text, not as structured chat messages.
+- _HISTORY_TURN_LIMIT = 3: only the last 3 turns of the passed history are used. The UI sends
+  at most 3 turns (slice(-3)) to match — never send more or the extras are silently discarded.
+- Per-turn token budget: _HISTORY_TOKEN_LIMIT_PER_TURN = 100 tokens (not chars). Enforced via
+  _truncate_to_tokens() using estimate_tokens() from llm/router.py. This correctly handles
+  Arabic and other non-ASCII scripts where char-count underestimates token count. 3 turns at
+  100 tokens each = ~300 tokens max history overhead on top of the 3500-token analytics budget.
+- num_ctx=8192 is set in llm/interface.py to guarantee the full combined prompt
+  (3500 analytics + 300 history + 200 system + question) fits within the model's context window.
+  Do not lower num_ctx below 4500 or full-budget payloads will be silently truncated by Ollama.
+- ConversationTurn.role is Literal["user", "assistant"] — Pydantic rejects any other value at
+  the API boundary. build_prompt skips unrecognized roles defensively, but they should never
+  arrive after this validation.
+- Cross-date follow-ups: the analytics payload always reflects the CURRENT request's date.
+  History text may reference prior dates. The LLM can compare text descriptions from history
+  but cannot access structured numbers from prior dates' analytics. Rule 1 (answer only from
+  JSON) still applies to the current payload; history is continuity context, not a data source.
 
 ## api/ — implementation notes
 - Entry point: api/main.py; run with uvicorn api.main:app --reload --port 8000
@@ -275,6 +300,11 @@ GET /anomaly/{date}, POST /feedback, GET /models/status, GET /health
   Segment list shows dominant vol regime per trend span (majority vote over span rows).
 - Teal/purple CSS vars for vol: use var(--teal,#1abc9c) and var(--purple,#9b59b6) with
   inline fallbacks since these vars may not be defined in the global CSS.
+- Multi-turn history: send() builds conversationHistory by filtering settled (non-loading)
+  messages and slicing the last 3 with .slice(-3). The slice(-3) matches _HISTORY_TURN_LIMIT=3
+  in llm/prompts.py exactly — keep these in sync. The role filter is not needed (all messages
+  are 'user' or 'assistant' by construction). messages is the pre-send render closure, which
+  correctly excludes the in-flight turn and reflects all prior completed exchanges.
 
 ## ml/anomaly_scorer.py — implementation notes
 - _cross_val_metrics(X, y) takes no model arg — always uses _RF_PARAMS internally

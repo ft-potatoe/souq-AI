@@ -5,7 +5,7 @@ Pydantic request/response models — spec §12.2 and §12.3.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -14,10 +14,19 @@ from pydantic import BaseModel, Field
 # Request models
 # ---------------------------------------------------------------------------
 
+class ConversationTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(..., description="Text of the turn")
+
+
 class QueryRequest(BaseModel):
     question: str = Field(..., min_length=1, description="Natural-language question about QSE market activity")
     date: str | None = Field(None, description="ISO date (YYYY-MM-DD); defaults to most recent trading day in features_master")
     params: dict[str, Any] = Field(default_factory=dict, description="Optional per-bucket override params forwarded to analytics modules")
+    conversation_history: list[ConversationTurn] = Field(
+        default_factory=list,
+        description="Prior turns in the conversation (last N user/assistant pairs) for follow-up context",
+    )
 
 
 class FeedbackRequest(BaseModel):

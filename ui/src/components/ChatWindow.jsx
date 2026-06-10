@@ -360,10 +360,16 @@ export default function ChatWindow({ date, disabled, onNewMessage, onDateChange,
     setMessages(prev => [...prev, userMsg, placeholder]);
 
     try {
+      // Build conversation history from the last 3 settled (non-loading) turns
+      const conversationHistory = messages
+        .filter(m => !m.loading)
+        .slice(-3)
+        .map(m => ({ role: m.role, content: m.text }));
+
       const res = await fetch('http://localhost:8000/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: q, date: effectiveDate }),
+        body: JSON.stringify({ question: q, date: effectiveDate, conversation_history: conversationHistory }),
       });
       const data = res.ok ? await res.json() : null;
       const answer = data?.answer ?? 'No response received.';

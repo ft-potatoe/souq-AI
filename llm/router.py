@@ -107,10 +107,10 @@ def compress_bucket(bucket: str, result: dict[str, Any], token_limit: int) -> di
     """
     if bucket == "similarity":
         compressed = copy.deepcopy(result)
-        if "matches" in compressed:
-            compressed["matches"] = [
+        if "top_matches" in compressed:
+            compressed["top_matches"] = [
                 {k: v for k, v in m.items() if k != "forward_return_stats"}
-                for m in compressed["matches"][:3]
+                for m in compressed["top_matches"][:3]
             ]
         if estimate_tokens(compressed) <= token_limit:
             return compressed

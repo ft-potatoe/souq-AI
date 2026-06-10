@@ -36,6 +36,7 @@ def query_llm(prompt: str, system: str) -> str:
             "temperature": 0.1,
             "top_p": 0.9,
             "num_predict": 300,
+            "num_ctx": 8192,  # analytics payload (3500) + history (~300) + system (~200) + headroom
         },
     }
     with httpx.Client(timeout=_TIMEOUT) as client:

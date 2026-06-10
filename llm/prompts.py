@@ -8,6 +8,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from llm.router import estimate_tokens
+
 SYSTEM_PROMPT = """\
 You are the QSE Market Copilot, an analytical assistant for the Qatar Stock Exchange.
 
@@ -26,7 +28,43 @@ Rules you must follow without exception:
 """
 
 
-def build_prompt(question: str, payload: dict[str, Any]) -> str:
-    """Return the user-turn prompt containing the question and analytics payload."""
+_HISTORY_TURN_LIMIT = 3   # max prior turns to include
+_HISTORY_TOKEN_LIMIT_PER_TURN = 100  # ~400 chars for ASCII, scales correctly for Arabic/non-ASCII
+
+
+def _truncate_to_tokens(text: str, token_limit: int) -> str:
+    """Truncate *text* until estimate_tokens(text) fits within *token_limit*."""
+    if estimate_tokens(text) <= token_limit:
+        return text
+    # Binary-search style: trim by ~4 chars per token overage until it fits.
+    step = max(1, (estimate_tokens(text) - token_limit) * 4)
+    while len(text) > 0 and estimate_tokens(text) > token_limit:
+        text = text[:-step]
+        step = max(1, step // 2)
+    return text.rstrip() + "..."
+
+
+def build_prompt(
+    question: str,
+    payload: dict[str, Any],
+    history: list[dict[str, str]] | None = None,
+) -> str:
+    """Return the user-turn prompt containing analytics payload, optional history, and the question."""
     serialised = json.dumps(payload, default=str, separators=(",", ":"))
-    return f"Analytics data:\n{serialised}\n\nQuestion: {question}"
+    parts = [f"Analytics data:\n{serialised}"]
+
+    if history:
+        lines = []
+        for turn in history[-_HISTORY_TURN_LIMIT:]:
+            role = turn.get("role", "")
+            content = turn.get("content", "")
+            content = _truncate_to_tokens(content, _HISTORY_TOKEN_LIMIT_PER_TURN)
+            if role == "user":
+                lines.append(f"User: {content}")
+            elif role == "assistant":
+                lines.append(f"Assistant: {content}")
+        if lines:
+            parts.append("Conversation so far:\n" + "\n".join(lines))
+
+    parts.append(f"Question: {question}")
+    return "\n\n".join(parts)

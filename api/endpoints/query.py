@@ -96,7 +96,8 @@ async def post_query(req: QueryRequest) -> QueryResponse:
     # 4. Build prompt and call LLM
     # query_llm uses httpx.Client (sync, 120 s timeout) — run in a thread pool
     # so the event loop is not blocked during the Ollama round-trip.
-    prompt = build_prompt(req.question, payload)
+    history = [t.model_dump() for t in req.conversation_history] if req.conversation_history else None
+    prompt = build_prompt(req.question, payload, history=history)
     try:
         answer = await asyncio.to_thread(query_llm, prompt, SYSTEM_PROMPT)
     except Exception as exc:
