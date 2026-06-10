@@ -172,6 +172,41 @@
   color: var(--gold-light);
 }
 
+/* ── Markdown table ── */
+.msg-table-wrap {
+  overflow-x: auto;
+  margin: 8px 0;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.msg-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.msg-table th,
+.msg-table td {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.msg-table th {
+  background: var(--surface-2);
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.msg-table tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
 /* ── Regime inline ── */
 .regime-inline {
   display: flex;

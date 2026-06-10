@@ -156,7 +156,7 @@ GET /anomaly/{date}, POST /feedback, GET /models/status, GET /health
 - [DONE] tests/test_features.py             — 66 tests (added TestForwardReturns, 7 tests)
 - [DONE] feedback/store.py                  — SQLite store at data/feedback/feedback.db; 34 tests in tests/test_feedback_store.py
 - [DONE] Full test suite: 350 tests, all passing
-- [DONE] llm/interface.py  — query_llm(prompt, system) -> str; httpx POST to Ollama localhost:11434; qwen2.5:1.5b; temp=0.1, top_p=0.9, num_predict=300, num_ctx=8192, timeout=600s, stream=False
+- [DONE] llm/interface.py  — query_llm(prompt, system) -> str; httpx POST to Ollama localhost:11434; qwen2.5:1.5b; temp=0.1, top_p=0.9, num_predict=450, num_ctx=8192, timeout=600s, stream=False
 - [DONE] llm/prompts.py    — SYSTEM_PROMPT (11 rules, spec §11.2); build_prompt(question, payload, history=None) -> str; multi-turn history injection
 - [DONE] llm/router.py     — BUCKET_KEYWORDS (10 buckets), BUCKET_PRIORITY, PAYLOAD_TOKEN_BUDGET=3500; match_buckets(); build_llm_payload(); compress_bucket(); estimate_tokens()
 - [DONE] api/ (main.py, endpoints/)               — all 10 spec endpoints; Pydantic models; CORS for localhost:5173
@@ -167,7 +167,8 @@ GET /anomaly/{date}, POST /feedback, GET /models/status, GET /health
 - [DONE] scripts/retrain/train_hmm.py      — standalone trend HMM refitter; semantic flip-rate gate; atomic rollback on failure
 - [DONE] scripts/retrain/train_vol_hmm.py  — standalone vol HMM refitter; semantic flip-rate gate; atomic rollback on failure
 - [DONE] scripts/models/rollback.py        — updates _current symlink/ptr; logs rollback entry to retrain_log.jsonl
-- [DONE] ui/ React components              — ChatWindow (date-aware queries, date chip, detected-date sync),
+- [DONE] ui/ React components              — ChatWindow (date-aware queries, date chip, detected-date sync,
+                                             markdown table rendering with grid lines),
                                              RegimeBadge (trend + vol pills), RegimeHistory (dual timelines),
                                              RegimeInline (vol pill in chat), AnomalyIndicator, SimilarityCard,
                                              SimilarityChart, AnalyticsPanel

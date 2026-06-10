@@ -90,7 +90,16 @@ function ThumbButtons({ onUp, onDown, voted }) {
   );
 }
 
-// Minimal markdown-like renderer: **bold**, *italic*, `code`, bullet lists, numbered lists
+// Parse a markdown table row into cell strings
+function parseTableRow(line) {
+  return line.replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+}
+
+function isTableSeparator(line) {
+  return /^\|?[\s\-|:]+\|?$/.test(line) && /--/.test(line);
+}
+
+// Minimal markdown-like renderer: **bold**, *italic*, `code`, bullet lists, numbered lists, tables
 function MsgText({ text }) {
   if (!text) return null;
 
@@ -100,6 +109,34 @@ function MsgText({ text }) {
 
   while (i < lines.length) {
     const line = lines[i];
+
+    // Markdown table: detect header row followed by separator
+    if (/^\|/.test(line) && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
+      const headers = parseTableRow(line);
+      i += 2; // skip header + separator
+      const rows = [];
+      while (i < lines.length && /^\|/.test(lines[i])) {
+        rows.push(parseTableRow(lines[i]));
+        i++;
+      }
+      elements.push(
+        <div key={`tbl-${i}`} className="msg-table-wrap">
+          <table className="msg-table">
+            <thead>
+              <tr>{headers.map((h, j) => <th key={j}><InlineText text={h} /></th>)}</tr>
+            </thead>
+            <tbody>
+              {rows.map((row, ri) => (
+                <tr key={ri}>
+                  {row.map((cell, ci) => <td key={ci}><InlineText text={cell} /></td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+      continue;
+    }
 
     // Numbered list
     if (/^\d+\.\s/.test(line)) {
