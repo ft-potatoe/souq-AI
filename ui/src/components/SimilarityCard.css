@@ -6,37 +6,136 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  min-width: 160px;
+  min-width: 180px;
+  flex: 1 1 180px;
+  max-width: 260px;
+  transition: border-color 0.15s;
+}
+
+.similarity-card:hover {
+  border-color: var(--navy-light);
 }
 
 .sim-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+}
+
+.sim-rank {
+  font-size: 11px;
+  color: var(--text-dim);
+  flex-shrink: 0;
 }
 
 .sim-date {
   font-size: 13px;
   font-weight: 600;
   color: var(--text);
+  flex: 1;
 }
 
 .sim-regime {
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: capitalize;
 }
 
-.sim-score {
+/* ── Score bar ── */
+.sim-score-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sim-score-label {
+  font-size: 10px;
+  color: var(--text-dim);
+  width: 32px;
+  flex-shrink: 0;
+}
+
+.sim-score-track {
+  flex: 1;
+  height: 4px;
+  background: var(--surface-2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.sim-score-fill {
+  height: 100%;
+  background: var(--gold);
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+
+.sim-score-num {
+  font-size: 10px;
+  color: var(--text-dim);
+  width: 36px;
+  text-align: right;
+}
+
+/* ── Forward returns ── */
+.sim-returns {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sim-return-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sim-return-label {
+  font-size: 10px;
+  color: var(--text-dim);
+  width: 20px;
+  flex-shrink: 0;
+}
+
+.sim-return-bar-wrap {
+  flex: 1;
+  height: 4px;
+  background: var(--surface-2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.sim-return-bar {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+
+.sim-return-bar--pos { background: var(--green); }
+.sim-return-bar--neg { background: var(--red); }
+
+.sim-return-val {
+  font-size: 11px;
+  font-weight: 600;
+  width: 46px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.sim-return-na {
   font-size: 11px;
   color: var(--text-dim);
-  margin-left: auto;
+  flex: 1;
+  text-align: right;
 }
 
+/* ── Footer ── */
 .sim-footer {
   display: flex;
   align-items: center;
   gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
 }
 
 .star-rating {
@@ -48,7 +147,7 @@
   background: none;
   border: none;
   padding: 0;
-  font-size: 18px;
+  font-size: 15px;
   color: var(--text-dim);
   cursor: pointer;
   line-height: 1;

@@ -12,7 +12,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from analytics import distribution, trend, correlation, seasonality, flows, gcc, regime as regime_mod
+from analytics import distribution, trend, correlation, seasonality, flows, gcc, regime as regime_mod, summary
 from ml import anomaly_scorer, similarity_ranker
 from llm.router import match_buckets, build_llm_payload
 from llm.prompts import SYSTEM_PROMPT, build_prompt
@@ -39,6 +39,7 @@ _ANALYTICS_DISPATCH: dict[str, Any] = {
     "flows":        flows.run,
     "gcc":          gcc.run,
     "regime":       regime_mod.run,
+    "summary":      summary.run,
 }
 
 

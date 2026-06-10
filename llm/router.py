@@ -16,6 +16,14 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 BUCKET_KEYWORDS: dict[str, list[str]] = {
+    "summary": [
+        "all time", "all-time", "record", "highest ever", "lowest ever",
+        "best day", "worst day", "biggest gain", "biggest loss", "biggest drop",
+        "52 week", "52-week", "year high", "year low", "ytd", "year to date",
+        "winning streak", "losing streak", "highest close", "lowest close",
+        "highest volume", "peak volume", "average daily return",
+        "how many up days", "how many down days",
+    ],
     "anomaly": [
         "anomal", "unusual", "outlier", "spike", "abnormal", "strange",
         "weird", "extreme", "flagged", "alert",
@@ -60,6 +68,7 @@ BUCKET_KEYWORDS: dict[str, list[str]] = {
 BUCKET_PRIORITY: list[str] = [
     "anomaly",
     "regime",
+    "summary",
     "flows",
     "distribution",
     "trend",
@@ -123,6 +132,28 @@ def compress_bucket(bucket: str, result: dict[str, Any], token_limit: int) -> di
             for k in ("rolling_corr_20d", "percentile_of_current_corr")
             if k in result
         }
+        if estimate_tokens(compressed) <= token_limit:
+            return compressed
+        return None
+
+    if bucket == "summary":
+        # Drop per-metric records for volume/return cols; keep price records + extremes
+        compressed = copy.deepcopy(result)
+        keep_metrics = ["close", "volume", "value_traded"]
+        if "records" in compressed:
+            compressed["records"] = {
+                k: v for k, v in compressed["records"].items() if k in keep_metrics
+            }
+        if estimate_tokens(compressed) <= token_limit:
+            return compressed
+        # Further compress: drop 52_week and ytd, keep all_time only
+        if "records" in compressed:
+            for m in compressed["records"]:
+                compressed["records"][m] = {"all_time": compressed["records"][m].get("all_time")}
+        compressed.pop("avg_daily_return_52w", None)
+        compressed.pop("avg_daily_return_ytd", None)
+        compressed.pop("up_days_ytd", None)
+        compressed.pop("down_days_ytd", None)
         if estimate_tokens(compressed) <= token_limit:
             return compressed
         return None

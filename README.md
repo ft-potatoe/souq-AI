@@ -1,12 +1,12 @@
 # QSE Market Exchange Copilot
 
-**Version:** 2.1
-**Scope:** Phase 1 (all features) + Phase 2 Regime Detection + ML Training Layer
+**Version:** 2.2
+**Scope:** Phase 1 (all features) + Phase 2 Regime Detection + ML Training Layer + React UI
 **Prepared for:** Qatar Stock Exchange — Market Operations
 **LLM Runtime:** Ollama (local machine), Qwen3 14B
 **Language:** English
 **Last updated:** June 2026
-**Changelog:** v2.1 — Fixed data leakage constraint in similarity ranker (§7.2); added token budget and bucket priority to query router (§12.4)
+**Changelog:** v2.2 — React UI completed (chat interface, anomaly gauge, similarity charts, analytics panels, regime history timeline); v2.1 — Fixed data leakage constraint in similarity ranker (§7.2); added token budget and bucket priority to query router (§12.4)
 
 ---
 
@@ -701,26 +701,88 @@ Lower-priority buckets are compressed then dropped when the budget is exceeded. 
 
 ## 13. Chat UI
 
-**Framework:** React 18 + Vite — `ui/src/`
+**Framework:** React 18 + Vite + Recharts — `ui/src/`
 
-**Core components:**
-- `ChatWindow.jsx` — streaming token-by-token response display
-- `RegimeBadge.jsx` — permanently visible header badge (Bull=green, Bear=red, Sideways=amber)
-- `AnomalyFeedback.jsx` — confirm/reject widget shown when `anomaly_score > 0.65`
-- `SimilarityCard.jsx` — matched session card with 1-5 star rating
-- `AnalyticsPanel.jsx` — collapsible raw JSON view for analyst transparency
-- `ModelStatus.jsx` — model versions, feedback counts, last retrain timestamp
+**Start:** `cd ui && npm run dev` — serves at `http://localhost:5173`
 
-**Regime badge format:**
+### Layout
+
 ```
-● BEAR REGIME  81% confidence  |  Active 14 sessions since 16 May 2024  |  v7
+┌─────────────────────────────────────────────────────────────┐
+│  QSE Market Copilot  ● Bull 87%  since 2024-04-12  [date ▾] │  ← header
+├──────────────┬──────────────────────────────────────────────┤
+│ Recent       │                                              │
+│ queries      │   Chat window                                │
+│              │                                              │
+│ 2024-06-10   │   [suggested question chips on empty state]  │
+│ Was today... │   [user bubble]                              │
+│              │   [assistant bubble]                         │
+│ 2024-06-09   │     ├ regime context inline                  │
+│ How does...  │     ├ formatted answer (bold/lists/code)     │
+│              │     ├ 👍 👎  thumbs feedback                  │
+│              │     ├ AnomalyIndicator (gauge + drivers)     │
+│              │     ├ AnomalyFeedback (yes/no confirm)       │
+│              │     ├ SimilarityCard × 5 (rank+bars+stars)  │
+│              │     ├ SimilarityChart (forward return bars)  │
+│              │     └ AnalyticsPanel (structured buckets)   │
+├──────────────┴──────────────────────────────────────────────┤
+│  ▸ Regime history  [collapsible timeline + transitions]      │  ← footer
+│  anomaly_scorer v1  similarity_ranker v1  retrained …        │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-**Model learning indicator (footer):**
+### Components
+
+| Component | File | Description |
+|---|---|---|
+| App | `App.jsx` | Root layout, date picker, query history sidebar |
+| ChatWindow | `components/ChatWindow.jsx` | Message list, markdown rendering, input row, suggested question chips |
+| RegimeBadge | `components/RegimeBadge.jsx` | Header badge — colored dot, label, confidence %, session count, start date |
+| AnomalyIndicator | `components/AnomalyIndicator.jsx` | Radial gauge (0–100 %), Normal / Elevated / Anomalous label, ranked feature drivers |
+| AnomalyFeedback | `components/AnomalyFeedback.jsx` | Yes / No confirm-reject widget, shown when `anomaly_score > 0.65` |
+| SimilarityCard | `components/SimilarityCard.jsx` | Rank, match-score bar, inline 5d/10d forward-return mini-bars, 1–5 star rating |
+| SimilarityChart | `components/SimilarityChart.jsx` | Recharts `BarChart` — 5d and 10d forward returns for all similar sessions; omits bars masked by leakage guard |
+| AnalyticsPanel | `components/AnalyticsPanel.jsx` | Collapsible structured views per bucket (Trend, Flows, Distribution, GCC peer grid, Seasonality line chart, Correlation, Summary); raw JSON behind secondary toggle |
+| RegimeHistory | `components/RegimeHistory.jsx` | Fetches `GET /regime/history` on demand; proportional colour-coded timeline bar + recent transitions / regime spans table |
+| ModelStatus | `components/ModelStatus.jsx` | Footer bar — model versions, feedback counts by type, last retrain date |
+
+### Answer rendering
+
+The assistant bubble renders markdown-like formatting without an external parser:
+
+| Syntax | Rendered as |
+|---|---|
+| `**bold**` | **bold** |
+| `*italic*` | *italic* |
+| `` `code` `` | inline code chip |
+| `- item` / `* item` | unordered list |
+| `1. item` | ordered list |
+| `## heading` | section heading |
+
+### Feedback wiring
+
+| Action | Endpoint | `feedback_type` |
+|---|---|---|
+| Thumbs up | `POST /feedback` | `thumbs_up` |
+| Thumbs down | `POST /feedback` | `thumbs_down` |
+| Anomaly confirm | `POST /feedback` | `anomaly_confirm` |
+| Anomaly reject | `POST /feedback` | `anomaly_reject` |
+| Similarity star rating | `POST /feedback` | `similarity_rating` (+ `rating: 1–5`, `target_date`) |
+
+### Data leakage in SimilarityChart
+
+`forward_return_5d` and `forward_return_10d` are `null` for sessions within 10 trading days of today (enforced by `safe_forward_returns()` in `ml/similarity_ranker.py`). `SimilarityChart` renders those bars as absent and notes this with a legend label — the UI never fabricates missing return values.
+
+### Regime badge format
+
 ```
-Anomaly model: v13 - trained on 287 feedback samples
-Similarity model: v9 - trained on 512 rating pairs
-Last retrained: Sunday 9 Jun 2024 at 02:14
+● Bull  87%  14 sessions  since 2024-04-12
+```
+
+### Model status footer format
+
+```
+anomaly_scorer v1  similarity_ranker v1  hmm v1  |  anomaly_confirm: 4  thumbs_up: 12  |  retrained 2024-06-02
 ```
 
 ---
@@ -745,6 +807,7 @@ Last retrained: Sunday 9 Jun 2024 at 02:14
 | LLM model | Qwen3 14B | qwen3:14b (9.3 GB) |
 | HTTP client | httpx | 0.28.1 |
 | Frontend | React 18 + Vite 5 | Node v20.13.1 |
+| UI charts | Recharts 2.x | 2.x |
 | Scheduler | APScheduler | 3.11.2 |
 
 > **Note:** `pandas-ta` was replaced by `ta` due to a numpy version conflict.
@@ -815,15 +878,30 @@ souq-AI/
 │       └── models_status.py
 ├── ui/
 │   ├── src/
-│   │   ├── App.jsx
+│   │   ├── App.jsx                  # root layout, date picker, sidebar
+│   │   ├── App.css
+│   │   ├── index.css                # CSS variables, reset
+│   │   ├── main.jsx
 │   │   └── components/
-│   │       ├── ChatWindow.jsx
-│   │       ├── RegimeBadge.jsx
-│   │       ├── AnomalyFeedback.jsx
-│   │       ├── SimilarityCard.jsx
-│   │       ├── AnalyticsPanel.jsx
-│   │       └── ModelStatus.jsx
-│   └── package.json
+│   │       ├── ChatWindow.jsx       # message list, markdown renderer, chips
+│   │       ├── ChatWindow.css
+│   │       ├── RegimeBadge.jsx      # header regime indicator
+│   │       ├── RegimeBadge.css
+│   │       ├── RegimeHistory.jsx    # footer timeline + transitions
+│   │       ├── RegimeHistory.css
+│   │       ├── AnomalyIndicator.jsx # radial gauge + feature drivers
+│   │       ├── AnomalyIndicator.css
+│   │       ├── AnomalyFeedback.jsx  # confirm/reject widget
+│   │       ├── AnomalyFeedback.css
+│   │       ├── SimilarityCard.jsx   # rank, score bar, return bars, stars
+│   │       ├── SimilarityCard.css
+│   │       ├── SimilarityChart.jsx  # forward-return bar chart (recharts)
+│   │       ├── SimilarityChart.css
+│   │       ├── AnalyticsPanel.jsx   # structured bucket views + raw JSON
+│   │       ├── AnalyticsPanel.css
+│   │       ├── ModelStatus.jsx      # footer model/feedback/retrain info
+│   │       └── ModelStatus.css
+│   └── package.json                 # deps: react 18, recharts, vite 5
 ├── tests/
 │   ├── make_test_data.py           # [DONE] synthetic data generator
 │   ├── test_features.py
@@ -1040,15 +1118,22 @@ cd ui && npm run dev
 | Flow analytics | `analytics/flows.py` | Done |
 | GCC benchmarking | `analytics/gcc.py` | Done |
 | Analytics acceptance tests | `tests/test_analytics.py` — 138 tests, AT-1–AT-8 | Pass |
-| Regime detection | `analytics/regime.py` | Pending |
-| Anomaly scorer | `ml/anomaly_scorer.py` | Pending |
-| Similarity ranker | `ml/similarity_ranker.py` | Pending |
-| Feedback store | `feedback/store.py` | Pending |
-| LLM interface | `llm/interface.py` | Pending |
-| LLM prompt builder | `llm/prompts.py` | Pending |
-| Query router | `llm/router.py` | Pending |
-| API main | `api/main.py` | Pending |
-| API endpoints | `api/endpoints/` | Pending |
-| Weekly retraining | `scripts/retrain/weekly_retrain.py` | Pending |
-| Model rollback | `scripts/models/rollback.py` | Pending |
-| React UI | `ui/src/components/` | Pending |
+| Regime detection | `analytics/regime.py` | Done |
+| Anomaly scorer | `ml/anomaly_scorer.py` — 44 tests | Done |
+| Similarity ranker | `ml/similarity_ranker.py` — 54 tests | Done |
+| Feedback store | `feedback/store.py` — 34 tests | Done |
+| LLM interface | `llm/interface.py` | Done |
+| LLM prompt builder | `llm/prompts.py` | Done |
+| Query router | `llm/router.py` | Done |
+| API main | `api/main.py` | Done |
+| API endpoints | `api/endpoints/` — all 10 endpoints | Done |
+| Weekly retraining | `scripts/retrain/weekly_retrain.py` | Done |
+| Standalone trainers | `train_anomaly.py`, `train_ranker.py`, `train_hmm.py` | Done |
+| Model rollback | `scripts/models/rollback.py` | Done |
+| React UI — chat + regime badge | `ChatWindow.jsx`, `RegimeBadge.jsx` | Done |
+| React UI — anomaly gauge | `AnomalyIndicator.jsx` | Done |
+| React UI — similarity cards + chart | `SimilarityCard.jsx`, `SimilarityChart.jsx` | Done |
+| React UI — analytics panels | `AnalyticsPanel.jsx` | Done |
+| React UI — regime history | `RegimeHistory.jsx` | Done |
+| React UI — model status | `ModelStatus.jsx` | Done |
+| Full test suite | 350 tests | Pass |

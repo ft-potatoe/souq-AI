@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import RegimeBadge from './components/RegimeBadge';
 import ChatWindow from './components/ChatWindow';
 import ModelStatus from './components/ModelStatus';
+import RegimeHistory from './components/RegimeHistory';
 import './App.css';
 
 export default function App() {
@@ -77,6 +78,7 @@ export default function App() {
       </div>
 
       <footer className="app-footer">
+        <RegimeHistory />
         <ModelStatus />
       </footer>
     </div>
