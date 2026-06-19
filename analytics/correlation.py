@@ -138,6 +138,8 @@ def run(date: str, params: dict[str, Any]) -> dict:
         current_window (int, optional): window for current_vs_historical (default 20)
         include_gcc (bool, optional): include gcc_peer_correlations (default True)
         gcc_window (int, optional): window for GCC peer correlations (default 60)
+        date_from (str, optional): ISO date; when supplied adds period_spearman and
+                                   period_pearson computed over that sub-period only.
     """
     metric_a: str = params.get("metric_a", "foreign_net")
     metric_b: str = params.get("metric_b", "return_1d")
@@ -145,10 +147,16 @@ def run(date: str, params: dict[str, Any]) -> dict:
     current_window: int = int(params.get("current_window", 20))
     include_gcc: bool = bool(params.get("include_gcc", True))
     gcc_window: int = int(params.get("gcc_window", 60))
+    date_from: str | None = params.get("date_from")
 
     hist = history_up_to(date)
     if hist.empty:
         raise ValueError(f"No history available up to {date}")
+
+    # Sub-period slice used for period_spearman / period_pearson
+    hist_period = (
+        hist[hist["date"] >= pd.Timestamp(date_from)] if date_from else hist
+    )
 
     series_a = hist[metric_a].reset_index(drop=True)
     series_b = hist[metric_b].reset_index(drop=True)
@@ -175,6 +183,27 @@ def run(date: str, params: dict[str, Any]) -> dict:
     out["historical_mean_corr"] = cv_hist["historical_mean"]
     out["historical_std_corr"] = cv_hist["historical_std"]
     out["percentile_of_current_corr"] = cv_hist["percentile_of_current"]
+
+    # Period correlation — present when date_from is supplied (e.g. "in 2026")
+    # Gives the analyst a single definitive number for the requested period
+    # rather than a rolling-window approximation.
+    if date_from:
+        paired = pd.concat(
+            [hist_period[metric_a].rename("a"),
+             hist_period[metric_b].rename("b")], axis=1
+        ).dropna()
+        if len(paired) >= 4:
+            from scipy.stats import spearmanr, pearsonr
+            rho, _ = spearmanr(paired["a"], paired["b"])
+            r, _   = pearsonr(paired["a"], paired["b"])
+            out["period_date_from"]  = date_from
+            out["period_date_to"]    = date
+            out["period_sessions"]   = len(paired)
+            out["period_spearman"]   = round(float(rho), 4)
+            out["period_pearson"]    = round(float(r), 4)
+        else:
+            out["period_date_from"] = date_from
+            out["period_note"] = "insufficient sessions in period for correlation"
 
     if include_gcc:
         out[f"gcc_correlations_{gcc_window}d"] = gcc_corrs

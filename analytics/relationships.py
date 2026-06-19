@@ -251,10 +251,16 @@ def run(date: str, params: dict[str, Any]) -> dict:
     """
     min_overlap = int(params.get("min_overlap", _MIN_OVERLAP))
     min_strength = float(params.get("min_strength", _MIN_STRENGTH))
+    date_from: str | None = params.get("date_from")
 
     hist = history_up_to(date)
     if hist.empty:
         raise ValueError(f"No history available up to {date}")
+
+    if date_from:
+        hist = hist[hist["date"] >= pd.Timestamp(date_from)].reset_index(drop=True)
+        if hist.empty:
+            raise ValueError(f"No history in range {date_from} to {date}")
 
     data_through = str(hist["date"].iloc[-1].date())
     columns = _candidate_columns(hist)
@@ -275,7 +281,7 @@ def run(date: str, params: dict[str, Any]) -> dict:
     if given and observed and given in hist.columns and observed in hist.columns:
         conditional = conditional_decile(hist, given, observed)
 
-    return {
+    out = {
         "date": str(pd.Timestamp(date).date()),
         "data_through": data_through,
         "primary_relationships": primary,
@@ -283,3 +289,7 @@ def run(date: str, params: dict[str, Any]) -> dict:
         "conditional": conditional,
         "note": _NOTE,
     }
+    if date_from:
+        out["period_date_from"] = date_from
+        out["period_sessions"] = len(hist)
+    return out

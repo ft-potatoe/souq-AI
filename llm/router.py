@@ -59,6 +59,11 @@ BUCKET_KEYWORDS: dict[str, list[str]] = {
         "compare to history", "compared to history", "vs history",
         "versus history", "compare to average", "above average",
         "below average", "unusual", "typical", "normal for",
+        # counts and threshold queries ("how many days fell >2%?")
+        "how many days", "how many sessions", "how many times",
+        "fell more than", "dropped more than", "rose more than",
+        "gained more than", "exceeded", "surpassed", "threshold",
+        "fell over", "gained over", "days that", "sessions that",
     ],
     "trend": [
         "price trend", "market trend", "index trend", "momentum", "sma",
@@ -84,8 +89,11 @@ BUCKET_KEYWORDS: dict[str, list[str]] = {
         "relate to", "related to", "association", "in sync", "tracks", "track",
     ],
     "seasonality": [
-        "season", "day of week", "monday effect", "weekly pattern",
+        "season", "day of week", "days of the week", "day of the week",
+        "monday effect", "weekly pattern", "weekly seasonal", "by day",
         "monthly", "ramadan", "time of year", "calendar",
+        # "pattern" only when combined with time/calendar context
+        "weekly", "day-of-week", "which day", "what day",
     ],
     # Day-type / market-state discovery (HDBSCAN). Keywords kept specific so they
     # do not collide with "regime" (HMM trend states) or generic "pattern" usage.

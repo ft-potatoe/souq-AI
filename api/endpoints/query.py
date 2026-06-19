@@ -72,27 +72,51 @@ async def post_query(req: QueryRequest) -> QueryResponse:
     bucket_results: dict[str, dict] = {}
     analytics_used: list[str] = []
 
-    # Infer date_from/date_to for flows range questions
-    if "flows" in matched and "flows" not in params:
-        from api._daterange import extract_date_range
-        d_from, d_to = extract_date_range(req.question, data_date)
-        if d_from:
+    # Extract date range once — shared by flows, correlation, and seasonality
+    from api._daterange import extract_date_range
+    _q_lower_dr = req.question.lower()
+    d_from, d_to = extract_date_range(req.question, data_date)
+    # "total/overall/historically/all time/entire dataset" → full history
+    if not d_from and any(kw in _q_lower_dr for kw in (
+        "total", "overall", "historically", "all time",
+        "entire", "ever", "all-time", "whole",
+    )):
+        from analytics._loader import history_up_to as _hup
+        _h = _hup(date_str)
+        if not _h.empty:
+            d_from = str(_h["date"].min().date())
+
+    if d_from:
+        if "flows" in matched and "flows" not in params:
             params = {**params, "flows": {"date_from": d_from}}
+        if "seasonality" in matched and "seasonality" not in params:
+            params = {**params, "_seasonality_date_from": d_from}
+        if "correlation" in matched and "correlation" not in params:
+            params = {**params, "_correlation_date_from": d_from}
+        if "trend" in matched and "trend" not in params:
+            params = {**params, "trend": {"date_from": d_from}}
+        if "gcc" in matched and "gcc" not in params:
+            params = {**params, "gcc": {"date_from": d_from}}
+        if "relationships" in matched and "relationships" not in params:
+            params = {**params, "relationships": {"date_from": d_from}}
 
     # Infer correlation pair from question when not explicitly supplied
     if "correlation" in matched and "correlation" not in params:
         q_lower = req.question.lower()
-        # Detect metric_b (second subject after "and"/"vs"/"with")
+        _c_date_from = params.pop("_correlation_date_from", None)
+        _c_base = {"date_from": _c_date_from} if _c_date_from else {}
         if any(kw in q_lower for kw in ("turnover", "value traded", "value_traded")):
-            params = {**params, "correlation": {"metric_a": "foreign_net", "metric_b": "value_traded"}}
+            params = {**params, "correlation": {**_c_base, "metric_a": "foreign_net", "metric_b": "value_traded"}}
         elif any(kw in q_lower for kw in ("volume",)):
-            params = {**params, "correlation": {"metric_a": "foreign_net", "metric_b": "volume"}}
+            params = {**params, "correlation": {**_c_base, "metric_a": "foreign_net", "metric_b": "volume"}}
         elif any(kw in q_lower for kw in ("return", "index", "price")):
-            params = {**params, "correlation": {"metric_a": "foreign_net", "metric_b": "return_1d"}}
+            params = {**params, "correlation": {**_c_base, "metric_a": "foreign_net", "metric_b": "return_1d"}}
         elif any(kw in q_lower for kw in ("domestic",)):
-            params = {**params, "correlation": {"metric_a": "foreign_net", "metric_b": "domestic_net"}}
+            params = {**params, "correlation": {**_c_base, "metric_a": "foreign_net", "metric_b": "domestic_net"}}
         elif any(kw in q_lower for kw in ("volatil",)):
-            params = {**params, "correlation": {"metric_a": "foreign_net", "metric_b": "volatility_20d"}}
+            params = {**params, "correlation": {**_c_base, "metric_a": "foreign_net", "metric_b": "volatility_20d"}}
+        elif _c_base:
+            params = {**params, "correlation": _c_base}
 
     # Infer distribution metric from question when not explicitly supplied
     if "distribution" in matched and "distribution" not in params:
@@ -111,10 +135,103 @@ async def post_query(req: QueryRequest) -> QueryResponse:
         elif any(kw in q_lower for kw in ("foreign", "inflow", "outflow")):
             params = {**params, "distribution": {"metric": "foreign_net"}}
 
+    # Infer date range and threshold for distribution questions
+    if "distribution" in matched:
+        import re as _re
+        dist_params = dict(params.get("distribution", {}))
+
+        # Date-range inference (mirrors flows block above)
+        if "date_from" not in dist_params and d_from:
+            dist_params["date_from"] = d_from
+            if d_to:
+                dist_params["date_to"] = d_to
+
+        # Threshold inference: "fell/dropped more than N%" -> threshold below -N
+        #                       "rose/gained more than N%"  -> threshold above +N
+        if "threshold" not in dist_params:
+            _ql = req.question.lower()
+            _drop_m = _re.search(
+                r"how many\s+(?:days?|sessions?|times?)\s+(?:fell|dropped?|declined?|were?\s+down|lost?)"
+                r"\s+(?:more than|over|by more than|>\s*)(\d+(?:\.\d+)?)\s*%",
+                _ql,
+            ) or _re.search(
+                r"(?:fell|dropped?|declined?|were?\s+down|lost?)"
+                r"\s+(?:more than|over|by more than|>\s*)(\d+(?:\.\d+)?)\s*%",
+                _ql,
+            )
+            _rise_m = _re.search(
+                r"how many\s+(?:days?|sessions?|times?)\s+(?:rose?|gained?|were?\s+up|surged?|jumped?)"
+                r"\s+(?:more than|over|>\s*)(\d+(?:\.\d+)?)\s*%",
+                _ql,
+            ) or _re.search(
+                r"(?:rose?|gained?|were?\s+up|surged?|jumped?|rallied?)"
+                r"\s+(?:more than|over|>\s*)(\d+(?:\.\d+)?)\s*%",
+                _ql,
+            )
+            if _drop_m:
+                dist_params["threshold"] = -float(_drop_m.group(1))
+                dist_params["threshold_direction"] = "below"
+                dist_params.setdefault("metric", "return_1d")
+            elif _rise_m:
+                dist_params["threshold"] = float(_rise_m.group(1))
+                dist_params["threshold_direction"] = "above"
+                dist_params.setdefault("metric", "return_1d")
+
+        if dist_params:
+            params = {**params, "distribution": dist_params}
+
+    # Infer seasonality metric from question when not explicitly supplied
+    if "seasonality" in matched and "seasonality" not in params:
+        q_lower = req.question.lower()
+        _wants_buy  = any(kw in q_lower for kw in ("buy", "buying", "purchased"))
+        _wants_sell = any(kw in q_lower for kw in ("sell", "selling", "sold"))
+        _wants_foreign = any(kw in q_lower for kw in ("foreign", "inflow", "outflow"))
+        # carry date_from from flows inference into seasonality params so the
+        # day-of-week profile is filtered to the same period (e.g. "for 2026")
+        _s_date_from = params.pop("_seasonality_date_from", None)
+        _s_base = {"date_from": _s_date_from} if _s_date_from else {}
+        if _wants_foreign and _wants_buy and _wants_sell:
+            # question asks for both buy and sell: run all three and merge
+            params = {**params, "seasonality": {**_s_base, "metric": "foreign_buy"},
+                      "_seasonality_extra": ["foreign_sell", "foreign_net"]}
+        elif _wants_foreign and _wants_buy:
+            params = {**params, "seasonality": {**_s_base, "metric": "foreign_buy"}}
+        elif _wants_foreign and _wants_sell:
+            params = {**params, "seasonality": {**_s_base, "metric": "foreign_sell"}}
+        elif _wants_foreign:
+            params = {**params, "seasonality": {**_s_base, "metric": "foreign_net"}}
+        elif any(kw in q_lower for kw in (
+            "return", "gain", "loss", "drop", "fall", "rise", "daily change",
+        )):
+            params = {**params, "seasonality": {**_s_base, "metric": "return_1d"}}
+        elif any(kw in q_lower for kw in ("volatil",)):
+            params = {**params, "seasonality": {**_s_base, "metric": "volatility_20d"}}
+        else:
+            # volume default — still apply date_from if present
+            if _s_base:
+                params = {**params, "seasonality": _s_base}
+
     for bucket in matched:
         if bucket in _ANALYTICS_DISPATCH:
             try:
                 result = _ANALYTICS_DISPATCH[bucket](date_str, params.get(bucket, {}))
+                # For seasonality with extra metrics (e.g. buy+sell+net), merge
+                # additional day_of_week_profiles into the primary result so the
+                # LLM sees all requested metrics in a single payload block.
+                extra_metrics = params.get("_seasonality_extra", [])
+                if bucket == "seasonality" and extra_metrics:
+                    _s_params_base = params.get(bucket, {})
+                    _extra_date_from = _s_params_base.get("date_from")
+                    for extra_metric in extra_metrics:
+                        try:
+                            _ep = {"metric": extra_metric}
+                            if _extra_date_from:
+                                _ep["date_from"] = _extra_date_from
+                            extra = seasonality.run(date_str, _ep)
+                            result[f"day_of_week_profile_{extra_metric}"] = extra["day_of_week_profile"]
+                            result[f"monthly_profile_{extra_metric}"] = extra["monthly_profile"]
+                        except Exception as exc:
+                            log.warning("Seasonality extra metric %s failed: %s", extra_metric, exc)
                 bucket_results[bucket] = result
                 analytics_used.append(bucket)
             except Exception as exc:

@@ -105,9 +105,12 @@ def run(date: str, params: dict[str, Any]) -> dict:
     params:
         horizons (list[int], optional): spread horizons in trading days (default [1,5,20])
         outperformance_window (int, optional): window for rolling_outperformance_rate (default 60)
+        date_from (str, optional): ISO date — when supplied the outperformance rate and
+                                   spread aggregates are computed over that sub-period only.
     """
     horizons: list[int] = params.get("horizons", _HORIZONS)
     op_window: int = int(params.get("outperformance_window", 60))
+    date_from: str | None = params.get("date_from")
 
     hist = history_up_to(date)
     if hist.empty:
@@ -148,11 +151,18 @@ def run(date: str, params: dict[str, Any]) -> dict:
     )
     total_peers = len(peer_returns) + 1  # +1 for QSE itself
 
-    # Relative performance spreads
+    # Relative performance spreads (always full history for horizon spreads)
     rel_perf = peer_relative_performance(hist, gcc_raw, horizons)
 
-    # Rolling outperformance rate
+    # Outperformance rate — filtered to date_from period when supplied
+    hist_op = (
+        hist[hist["date"] >= pd.Timestamp(date_from)] if date_from else hist
+    )
     op_rate = rolling_outperformance_rate(
+        hist_op.set_index("date")["return_1d"],
+        hist_op.set_index("date")["gcc_avg_return_1d"],
+        len(hist_op),  # use whole filtered period, not a fixed window
+    ) if date_from else rolling_outperformance_rate(
         hist.set_index("date")["return_1d"],
         hist.set_index("date")["gcc_avg_return_1d"],
         op_window,
@@ -187,5 +197,9 @@ def run(date: str, params: dict[str, Any]) -> dict:
         if h != 1:
             raw = rel_perf.get(f"qse_vs_gcc_spread_{h}d")
             out[f"qse_vs_gcc_spread_{h}d_pct"] = round(raw * 100, 4) if raw is not None else None
+
+    if date_from:
+        out["period_date_from"] = date_from
+        out["period_sessions"] = len(hist_op)
 
     return out

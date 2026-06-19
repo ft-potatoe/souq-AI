@@ -1,42 +1,70 @@
 """
 llm/interface.py
-Thin wrapper around the Ollama HTTP API for qwen3:8b inference.
+Thin wrapper around Groq (primary) with Ollama fallback for LLM inference.
+
+If GROQ_API_KEY is set in the environment, requests go to Groq's API using
+llama-3.3-70b-versatile. Otherwise falls back to local Ollama qwen3:8b.
 """
 
 from __future__ import annotations
 
+import os
 import re
 
 import httpx
 
-_OLLAMA_URL = "http://localhost:11434/api/generate"
-_MODEL = "qwen3:8b"
-_TIMEOUT = 600.0
-
-# Ollama 0.30.6 does not reliably suppress qwen3 thinking blocks via think:false.
-# Strip any <think>...</think> content from the response before returning it.
 _THINK_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
+
+# Groq config
+_GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+_GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+_GROQ_MODEL = "llama-3.3-70b-versatile"
+
+# Ollama fallback config
+_OLLAMA_URL = "http://localhost:11434/api/generate"
+_OLLAMA_MODEL = "qwen3:8b"
+
+_TIMEOUT = 600.0
 
 
 def _strip_thinking(text: str) -> str:
     return _THINK_RE.sub("", text).strip()
 
 
-def query_llm(prompt: str, system: str) -> str:
-    """Send a prompt to Ollama and return the response text.
-
-    Raises httpx.HTTPError on transport failure or non-2xx status.
-    """
+def _query_groq(prompt: str, system: str) -> str:
+    headers = {
+        "Authorization": f"Bearer {_GROQ_API_KEY}",
+        "Content-Type": "application/json",
+    }
     payload = {
-        "model": _MODEL,
+        "model": _GROQ_MODEL,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.1,
+        "top_p": 0.9,
+        "max_tokens": 900,
+        "stream": False,
+    }
+    with httpx.Client(timeout=_TIMEOUT) as client:
+        response = client.post(_GROQ_URL, headers=headers, json=payload)
+        response.raise_for_status()
+        return response.json()["choices"][0]["message"]["content"].strip()
+
+
+def _query_ollama(prompt: str, system: str) -> str:
+    payload = {
+        "model": _OLLAMA_MODEL,
         "prompt": prompt,
         "system": system,
         "stream": False,
+        "think": False,
         "options": {
             "temperature": 0.1,
             "top_p": 0.9,
             "num_predict": 900,
-            "num_ctx": 8192,  # analytics payload (3500) + history (~300) + system (~200) + headroom
+            "num_ctx": 8192,
         },
     }
     with httpx.Client(timeout=_TIMEOUT) as client:
@@ -44,3 +72,13 @@ def query_llm(prompt: str, system: str) -> str:
         response.raise_for_status()
         raw = response.json()["response"]
         return _strip_thinking(raw)
+
+
+def query_llm(prompt: str, system: str) -> str:
+    """Send a prompt to Groq (if GROQ_API_KEY set) or Ollama and return the response text.
+
+    Raises httpx.HTTPError on transport failure or non-2xx status.
+    """
+    if _GROQ_API_KEY:
+        return _query_groq(prompt, system)
+    return _query_ollama(prompt, system)

@@ -194,9 +194,9 @@ GET /anomaly/{date}, POST /feedback, GET /models/status, GET /health
 - [DONE] ml/similarity_ranker.py            — k-NN(40) + XGBRanker re-score to top-10; safe_forward_returns leakage guard; 80/20 holdout NDCG@10 validation; tests/test_similarity_ranker.py (54 tests)
 - [DONE] tests/test_features.py             — 66 tests (added TestForwardReturns, 7 tests)
 - [DONE] feedback/store.py                  — SQLite store at data/feedback/feedback.db; 34 tests in tests/test_feedback_store.py
-- [DONE] Full test suite: 378 tests, all passing (incl. test_relationships.py, test_clustering.py, test_ingest.py)
+- [DONE] Full test suite: 379 tests, all passing (incl. test_relationships.py, test_clustering.py, test_ingest.py)
 - [DONE] llm/interface.py  — query_llm(prompt, system) -> str; httpx POST to Ollama localhost:11434; qwen3:8b; temp=0.1, top_p=0.9, num_predict=700, num_ctx=8192, timeout=600s, stream=False; _strip_thinking() removes <think> blocks
-- [DONE] llm/prompts.py    — SYSTEM_PROMPT (15 rules: +14 clustering, +15 associations-not-causation); build_prompt(question, payload, history=None) -> str; multi-turn history injection
+- [DONE] llm/prompts.py    — SYSTEM_PROMPT (16 rules: +14 clustering, +15 associations-not-causation, +16 threshold_count/date_range); build_prompt(question, payload, history=None) -> str; multi-turn history injection
 - [DONE] llm/router.py     — BUCKET_KEYWORDS (12 buckets: +clustering, +relationships), BUCKET_PRIORITY, PAYLOAD_TOKEN_BUDGET=3500; match_buckets(); build_llm_payload(); compress_bucket(); estimate_tokens()
 - [DONE] api/ (main.py, endpoints/)               — all 10 spec endpoints; Pydantic models; CORS for localhost:5173
                                                    Start: uvicorn api.main:app --reload --port 8000
@@ -258,6 +258,10 @@ GET /anomaly/{date}, POST /feedback, GET /models/status, GET /health
   "price trend", "market trend", "index trend", "sma", "rsi", "macd", "bollinger", "atr",
   "moving average", "momentum", "overbought", "oversold", "above sma", "below sma", "technical".
 - api/_daterange.py supports additional patterns: "from YYYY to Month YYYY", "from YYYY to YYYY"
+- distribution bucket keywords include count/threshold phrases: "how many days", "how many sessions",
+  "how many times", "fell more than", "dropped more than", "rose more than", "gained more than",
+  "exceeded", "surpassed", "threshold", "fell over", "gained over", "days that", "sessions that".
+  POST /query auto-infers threshold from question regex and date range from extract_date_range().
 - volatility_regime bucket keywords: "volatil", "vol regime", "low vol", "high vol",
   "options", "risk environment", "vol percentile", "vol spike", "vol compressed", etc.
   Bucket sits between regime and summary in BUCKET_PRIORITY.
@@ -285,6 +289,9 @@ GET /anomaly/{date}, POST /feedback, GET /models/status, GET /health
   History text may reference prior dates. The LLM can compare text descriptions from history
   but cannot access structured numbers from prior dates' analytics. Rule 1 (answer only from
   JSON) still applies to the current payload; history is continuity context, not a data source.
+- Rule 16: when payload contains "threshold_count", report it as an exact integer (never a
+  fraction/%). When "date_range" block is present, confine the answer to that period and state
+  it explicitly. Never extend to the full historical record if a date range was requested.
 
 ## api/ — implementation notes
 - Entry point: api/main.py; run with uvicorn api.main:app --reload --port 8000
@@ -365,9 +372,20 @@ GET /anomaly/{date}, POST /feedback, GET /models/status, GET /health
   correctly excludes the in-flight turn and reflects all prior completed exchanges.
 
 ## analytics/distribution.py — implementation notes
-- run() now returns skewness, kurtosis, and percentiles (p25/p50/p75) in addition to
+- run() returns skewness, kurtosis, and percentiles (p25/p50/p75) in addition to
   percentile_rank, historical_frequency, rolling_stats, last_comparable_date.
 - Default metric is "volume"; POST /query infers metric from question keywords automatically.
+- Optional date_from / date_to params (ISO strings): history is sliced to the range before ALL
+  downstream computations (extremes, percentiles, rolling stats, skewness). Adds a "date_range"
+  block {date_from, date_to, sessions_in_range} to the return dict when supplied.
+  Follows the same pattern as analytics/flows.py range_aggregates.
+- Optional threshold (float) + threshold_direction ("above"|"below", default "below") params:
+  _count_threshold() counts sessions where metric >= threshold (above) or <= threshold (below).
+  Adds "threshold", "threshold_direction", "threshold_count" (int) to the return dict.
+  Example: threshold=-2.0, threshold_direction="below" answers "how many days fell >2%?".
+- Both features compose: date_from + threshold in one call answers "how many days in 2026 fell >2%?".
+- POST /query auto-infers date range (via extract_date_range) and threshold (via regex on question)
+  for the distribution bucket — callers never need to set these manually for NL queries.
 
 ## analytics/relationships.py — implementation notes
 - Deterministic (never trains). The machine-driven counterpart to correlation.py: correlation.py

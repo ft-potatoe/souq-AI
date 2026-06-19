@@ -130,6 +130,7 @@ def run(date: str, params: dict[str, Any]) -> dict:
         momentum_windows (list[int], optional)
         fast_sma_col (str, optional): features column for fast SMA
         slow_sma_col (str, optional): features column for slow SMA
+        date_from (str, optional): ISO date — restrict history to on/after this date
     """
     metric: str = params.get("metric", "foreign_net")
     slope_window: int = int(params.get("slope_window", 10))
@@ -137,10 +138,16 @@ def run(date: str, params: dict[str, Any]) -> dict:
     momentum_windows: list[int] = params.get("momentum_windows", _MOMENTUM_WINDOWS)
     fast_col: str | None = params.get("fast_sma_col")
     slow_col: str | None = params.get("slow_sma_col")
+    date_from: str | None = params.get("date_from")
 
     hist = history_up_to(date)
     if hist.empty:
         raise ValueError(f"No history available up to {date}")
+
+    if date_from:
+        hist = hist[hist["date"] >= pd.Timestamp(date_from)].reset_index(drop=True)
+        if hist.empty:
+            raise ValueError(f"No history in range {date_from} to {date}")
 
     series = hist[metric].reset_index(drop=True)
 
@@ -199,4 +206,7 @@ def run(date: str, params: dict[str, Any]) -> dict:
         "sma_crossover": crossover_event,
         "crossover_date": crossover_date,
     }
+    if date_from:
+        out["period_date_from"] = date_from
+        out["period_sessions"] = len(hist)
     return out

@@ -123,11 +123,23 @@ def _extremes(hist: pd.DataFrame, metric: str) -> dict:
 # Public entry point
 # ---------------------------------------------------------------------------
 
+def _count_threshold(series: pd.Series, threshold: float, direction: str) -> int:
+    """Count sessions where *series* meets the threshold condition."""
+    valid = series.dropna()
+    if direction == "above":
+        return int((valid >= threshold).sum())
+    return int((valid <= threshold).sum())
+
+
 def run(date: str, params: dict[str, Any]) -> dict:
     """
     params:
         metric (str): one of SUPPORTED_METRICS
         direction (str, optional): "above" | "below" for historical_frequency
+        date_from (str, optional): ISO date — restrict history to on/after this date
+        date_to (str, optional): ISO date — restrict history to on/before this date
+        threshold (float, optional): value to count sessions against
+        threshold_direction (str, optional): "above" | "below" (default "below")
     """
     metric: str = params.get("metric", "volume")
     if metric not in SUPPORTED_METRICS:
@@ -135,10 +147,35 @@ def run(date: str, params: dict[str, Any]) -> dict:
             f"Unsupported metric '{metric}'. Choose from: {sorted(SUPPORTED_METRICS)}"
         )
     direction: str = params.get("direction", "above")
+    date_from: str | None = params.get("date_from")
+    date_to: str | None = params.get("date_to")
+    threshold = params.get("threshold")
+    threshold_direction: str = params.get("threshold_direction", "below")
 
     hist = history_up_to(date)
     if hist.empty:
         raise ValueError(f"No history available up to {date}")
+
+    # Slice to requested date range before all downstream computations
+    date_range_block: dict | None = None
+    if date_from or date_to:
+        mask = pd.Series(True, index=hist.index)
+        if date_from:
+            mask &= hist["date"] >= pd.Timestamp(date_from)
+        if date_to:
+            mask &= hist["date"] <= pd.Timestamp(date_to)
+        hist = hist[mask].reset_index(drop=True)
+        if hist.empty:
+            raise ValueError(
+                f"No sessions in range {date_from or 'start'} – {date_to or date}"
+            )
+        actual_from = str(hist["date"].iloc[0].date())
+        actual_to = str(hist["date"].iloc[-1].date())
+        date_range_block = {
+            "date_from": actual_from,
+            "date_to": actual_to,
+            "sessions_in_range": len(hist),
+        }
 
     row = row_for_date(date)
     today_value = row[metric]
@@ -164,7 +201,7 @@ def run(date: str, params: dict[str, Any]) -> dict:
 
     extremes = _extremes(hist, metric)
 
-    return {
+    result: dict = {
         "metric": metric,
         "today_value": (
             None if (isinstance(today_value, float) and math.isnan(today_value))
@@ -181,3 +218,13 @@ def run(date: str, params: dict[str, Any]) -> dict:
         "percentiles": {"p25": pct25, "p50": pct50, "p75": pct75},
         "extremes": extremes,
     }
+
+    if date_range_block is not None:
+        result["date_range"] = date_range_block
+
+    if threshold is not None:
+        result["threshold"] = threshold
+        result["threshold_direction"] = threshold_direction
+        result["threshold_count"] = _count_threshold(valid, float(threshold), threshold_direction)
+
+    return result

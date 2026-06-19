@@ -160,5 +160,6 @@ class HealthResponse(BaseModel):
     status: str
     features_loaded: bool
     features_rows: int
-    ollama_reachable: bool
+    ollama_reachable: bool  # True when active LLM backend (Groq or Ollama) is reachable
+    llm_backend: str = "ollama"  # "groq" or "ollama"
     model_versions: dict[str, str]

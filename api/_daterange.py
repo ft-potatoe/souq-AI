@@ -203,6 +203,11 @@ def _parse_since(q: str, data_date: date) -> tuple[str, str] | None:
     if m:
         return m.group(1), data_date.isoformat()
 
+    # since YYYY (bare year, e.g. "since 2024")
+    m = re.search(r"since\s+(\d{4})\b", q, re.IGNORECASE)
+    if m:
+        return f"{m.group(1)}-01-01", data_date.isoformat()
+
     # since Month YYYY
     m = re.search(
         rf"since\s+{_MONTH}\s+{_YEAR}",
