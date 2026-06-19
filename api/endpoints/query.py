@@ -14,7 +14,8 @@ from fastapi import APIRouter, HTTPException
 
 from analytics import distribution, trend, correlation, seasonality, flows, gcc, regime as regime_mod, summary
 from analytics import volatility_regime as vol_regime_mod
-from ml import anomaly_scorer, similarity_ranker
+from analytics import relationships as relationships_mod
+from ml import anomaly_scorer, similarity_ranker, clustering as clustering_mod
 from llm.router import match_buckets, build_llm_payload
 from llm.prompts import SYSTEM_PROMPT, build_prompt
 from llm.interface import query_llm
@@ -24,6 +25,11 @@ from api.models import (
     RegimeContext,
     AnomalyAssessment,
     SimilarSession,
+    ClusterInfo,
+    ClusteringResult,
+    RelationshipItem,
+    ConditionalRelationship,
+    RelationshipsResult,
 )
 from api._dates import resolve_date, model_versions_snapshot
 
@@ -42,6 +48,7 @@ _ANALYTICS_DISPATCH: dict[str, Any] = {
     "regime":            regime_mod.run,
     "volatility_regime": vol_regime_mod.run,
     "summary":           summary.run,
+    "relationships":     relationships_mod.run,
 }
 
 
@@ -124,6 +131,14 @@ async def post_query(req: QueryRequest) -> QueryResponse:
             except Exception as exc:
                 log.warning("Similarity ranker failed for %s: %s", date_str, exc)
 
+        elif bucket == "clustering":
+            try:
+                result = clustering_mod.cluster(date_str, params.get("clustering"))
+                bucket_results["clustering"] = result
+                analytics_used.append("clustering")
+            except Exception as exc:
+                log.warning("Clustering failed for %s: %s", date_str, exc)
+
     # 3. Build token-budgeted LLM payload
     payload = build_llm_payload(matched, bucket_results)
 
@@ -194,6 +209,51 @@ async def post_query(req: QueryRequest) -> QueryResponse:
                 forward_return_10d=match.get("forward_return_10d"),
             ))
 
+    clustering_result: ClusteringResult | None = None
+    if "clustering" in bucket_results:
+        c = bucket_results["clustering"]
+        clustering_result = ClusteringResult(
+            date=c.get("date", date_str),
+            current_cluster_id=c.get("current_cluster_id"),
+            current_cluster_label=c.get("current_cluster_label"),
+            distance_to_centroid=c.get("distance_to_centroid"),
+            is_outlier=c.get("is_outlier"),
+            all_clusters=[
+                ClusterInfo(
+                    cluster_id=int(cl.get("cluster_id", 0)),
+                    label=str(cl.get("label", "")),
+                    size=int(cl.get("size", 0)),
+                    characteristics=cl.get("characteristics", {}),
+                )
+                for cl in c.get("all_clusters", [])
+            ],
+            member_dates_sample=c.get("member_dates_sample", []),
+            noise_fraction=c.get("noise_fraction"),
+            model_version=c.get("model_version"),
+            note=c.get("note"),
+        )
+
+    relationships_result: RelationshipsResult | None = None
+    if "relationships" in bucket_results:
+        rel = bucket_results["relationships"]
+        cond = rel.get("conditional")
+        relationships_result = RelationshipsResult(
+            date=rel.get("date", date_str),
+            primary_relationships=[
+                RelationshipItem(
+                    feature_a=str(p.get("feature_a", "")),
+                    feature_b=str(p.get("feature_b", "")),
+                    spearman=float(p.get("spearman", 0.0)),
+                    direction=str(p.get("direction", "")),
+                    sample_size=int(p.get("sample_size", 0)),
+                    plain=str(p.get("plain", "")),
+                )
+                for p in rel.get("primary_relationships", [])
+            ],
+            conditional=ConditionalRelationship(**cond) if cond else None,
+            note=rel.get("note"),
+        )
+
     elapsed_ms = (time.perf_counter() - t0) * 1000.0
 
     return QueryResponse(
@@ -202,6 +262,8 @@ async def post_query(req: QueryRequest) -> QueryResponse:
         regime_context=regime_context,
         anomaly_assessment=anomaly_assessment,
         similarity_results=similarity_results,
+        clustering_result=clustering_result,
+        relationships_result=relationships_result,
         data_date=date_str,
         model_versions=model_versions_snapshot(),
         response_time_ms=round(elapsed_ms, 1),

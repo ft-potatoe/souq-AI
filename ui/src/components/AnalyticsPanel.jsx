@@ -443,7 +443,8 @@ export default function AnalyticsPanel({ payload }) {
   if (!payload) return null;
 
   const structuredBuckets = Object.keys(payload).filter(
-    k => !['similarity', 'anomaly', 'regime', 'analytics_used', 'data_date'].includes(k)
+    k => !['similarity', 'anomaly', 'regime', 'clustering', 'relationships',
+           'analytics_used', 'data_date', 'response_time_ms'].includes(k)
   );
 
   if (structuredBuckets.length === 0) return null;

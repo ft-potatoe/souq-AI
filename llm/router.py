@@ -73,6 +73,25 @@ BUCKET_KEYWORDS: dict[str, list[str]] = {
         "season", "day of week", "monday effect", "weekly pattern",
         "monthly", "ramadan", "time of year", "calendar",
     ],
+    # Day-type / market-state discovery (HDBSCAN). Keywords kept specific so they
+    # do not collide with "regime" (HMM trend states) or generic "pattern" usage.
+    "clustering": [
+        "day type", "type of day", "kind of day", "what kind of day",
+        "market state", "session cluster", "cluster", "recurring pattern",
+        "regime-like", "group of days", "similar market conditions",
+        "market conditions like",
+    ],
+    # Automated relationship discovery (Spearman scan + conditional decile). Distinct
+    # from "correlation" (two USER-NAMED features); these phrasings ask the system to
+    # FIND the relationships. Avoid generic "relationship"/"association" (owned by
+    # correlation) to prevent both firing on every co-movement question.
+    "relationships": [
+        "when x goes", "tends to", "usually when", "what drives",
+        "what moves with", "discover relationship", "hidden relationship",
+        "scan relationships", "which features", "what's associated",
+        "what is associated", "inverse relationship", "what affects",
+        "what tends to happen",
+    ],
 }
 
 # Buckets ordered from highest to lowest priority when trimming for budget.
@@ -80,6 +99,7 @@ BUCKET_PRIORITY: list[str] = [
     "anomaly",
     "regime",
     "volatility_regime",
+    "clustering",
     "summary",
     "flows",
     "distribution",
@@ -87,6 +107,7 @@ BUCKET_PRIORITY: list[str] = [
     "similarity",
     "gcc",
     "correlation",
+    "relationships",
     "seasonality",
 ]
 
@@ -166,6 +187,31 @@ def compress_bucket(bucket: str, result: dict[str, Any], token_limit: int) -> di
         compressed.pop("avg_daily_return_ytd", None)
         compressed.pop("up_days_ytd", None)
         compressed.pop("down_days_ytd", None)
+        if estimate_tokens(compressed) <= token_limit:
+            return compressed
+        return None
+
+    if bucket == "relationships":
+        # Keep the headline relationships + conditional + note; drop the long
+        # strongest_relationships list first, then trim primary to 3 if needed.
+        compressed = copy.deepcopy(result)
+        compressed.pop("strongest_relationships", None)
+        if estimate_tokens(compressed) <= token_limit:
+            return compressed
+        if "primary_relationships" in compressed:
+            compressed["primary_relationships"] = compressed["primary_relationships"][:3]
+        if estimate_tokens(compressed) <= token_limit:
+            return compressed
+        return None
+
+    if bucket == "clustering":
+        # Drop member-date samples and keep current cluster + the 3 largest clusters.
+        compressed = copy.deepcopy(result)
+        compressed.pop("member_dates_sample", None)
+        if "all_clusters" in compressed:
+            compressed["all_clusters"] = sorted(
+                compressed["all_clusters"], key=lambda c: c.get("size", 0), reverse=True
+            )[:3]
         if estimate_tokens(compressed) <= token_limit:
             return compressed
         return None

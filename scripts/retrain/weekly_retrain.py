@@ -77,6 +77,11 @@ from analytics.volatility_regime import (
     _assign_state_labels as _vol_hmm_label_map,
     _FEATURES as _VOL_HMM_FEATURES,
 )
+from ml.clustering import (
+    train_and_save as clustering_train,
+    _load_artifact as _load_clustering,
+    _save_artifact as _save_clustering,
+)
 
 _LOG_PATH = _ROOT / "logs" / "retrain_log.jsonl"
 _MIN_ANOMALY_FEEDBACK = 10
@@ -295,6 +300,46 @@ def _step_vol_hmm(
     return "deployed"
 
 
+def _step_clustering(
+    features_df: pd.DataFrame,
+    errors: dict,
+    metrics: dict,
+) -> str:
+    """
+    Step 6c: refit HDBSCAN clustering. Returns deployment status. Failure is
+    non-blocking (additive model, like vol_hmm). The validation gate lives inside
+    train_and_save() (silhouette / noise / n_clusters) and raises ValueError on
+    failure; the prior artifact is restored atomically.
+    """
+    log.info("clustering: refitting on %d sessions.", len(features_df))
+
+    prior = _load_clustering()  # (scaler, model, meta) or None
+
+    try:
+        path = clustering_train(features_df)
+    except ValueError as exc:
+        msg = str(exc)
+        log.warning("clustering fit/gate failed (non-blocking): %s", msg)
+        if prior is not None:
+            old_scaler, old_model, old_meta = prior
+            _save_clustering(old_scaler, old_model, old_meta)
+            log.info("clustering: prior model restored.")
+        errors["clustering"] = msg
+        return "failed"
+
+    log.info("clustering saved -> %s", path)
+
+    new = _load_clustering()
+    if new is not None:
+        _, _, new_meta = new
+        metrics["clustering"] = {
+            "silhouette": new_meta.get("silhouette"),
+            "noise_fraction": new_meta.get("noise_fraction"),
+            "n_clusters": new_meta.get("n_clusters"),
+        }
+    return "deployed"
+
+
 def _step_hmm(
     features_df: pd.DataFrame,
     errors: dict,
@@ -376,6 +421,7 @@ def main() -> int:
         "similarity_ranker": None,
         "regime_hmm": None,
         "vol_hmm": None,
+        "clustering": None,
     }
 
     # Step 2: build training labels (done inside each model's train_and_save)
@@ -398,12 +444,16 @@ def main() -> int:
     log.info("Step 6b: vol_hmm.")
     model_status["vol_hmm"] = _step_vol_hmm(features_df, errors, metrics)
 
+    # Step 6c: clustering (additive; failure does not block overall status)
+    log.info("Step 6c: clustering.")
+    model_status["clustering"] = _step_clustering(features_df, errors, metrics)
+
     # Step 7: reload API workers
     log.info("Step 7: API reload.")
     reload_result = _reload_api()
 
     # Step 8: write retrain_log.jsonl
-    # vol_hmm is additive — its failure does not drive overall status to "failed"
+    # vol_hmm and clustering are additive — their failure does not drive overall status
     core_models = {"anomaly_scorer", "similarity_ranker", "regime_hmm"}
     any_failed = any(v == "failed" for k, v in model_status.items() if k in core_models)
     overall_status = "failed" if any_failed else "success"

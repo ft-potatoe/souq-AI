@@ -17,6 +17,7 @@ MODEL_DIRS = {
     "similarity_ranker": _ROOT / "models" / "similarity_ranker",
     "regime_hmm":        _ROOT / "models" / "regime_hmm",
     "vol_hmm":           _ROOT / "models" / "vol_hmm",
+    "clustering":        _ROOT / "models" / "clustering",
 }
 
 SYMLINK_NAMES = {
@@ -24,6 +25,7 @@ SYMLINK_NAMES = {
     "similarity_ranker": "xgb_ranker_current",
     "regime_hmm":        "hmm_current",
     "vol_hmm":           "vol_hmm_current",
+    "clustering":        "hdbscan_current",
 }
 
 
@@ -60,7 +62,7 @@ def symlink_target(model_key: str) -> Path | None:
 
 
 def model_versions_snapshot() -> dict[str, str]:
-    """Return {model_key: version_string} for all three models."""
+    """Return {model_key: version_string} for every registered model."""
     versions: dict[str, str] = {}
     for key in MODEL_DIRS:
         target = symlink_target(key)

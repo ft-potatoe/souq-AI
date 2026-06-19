@@ -80,12 +80,60 @@ class RegimeContext(BaseModel):
     volatility_60d_current: float | None = None
 
 
+class ClusterInfo(BaseModel):
+    cluster_id: int
+    label: str
+    size: int
+    characteristics: dict[str, Any] = Field(default_factory=dict)
+
+
+class ClusteringResult(BaseModel):
+    date: str
+    current_cluster_id: int | None = None
+    current_cluster_label: str | None = None
+    distance_to_centroid: float | None = None
+    is_outlier: bool | None = None
+    all_clusters: list[ClusterInfo] = Field(default_factory=list)
+    member_dates_sample: list[str] = Field(default_factory=list)
+    noise_fraction: float | None = None
+    model_version: str | None = None
+    note: str | None = None
+
+
+class RelationshipItem(BaseModel):
+    feature_a: str
+    feature_b: str
+    spearman: float
+    direction: str  # "inverse" | "direct"
+    sample_size: int
+    plain: str
+
+
+class ConditionalRelationship(BaseModel):
+    given: str
+    condition: str
+    observed: str
+    result_pct: float
+    baseline_pct: float
+    sample_size: int
+    plain: str
+
+
+class RelationshipsResult(BaseModel):
+    date: str
+    primary_relationships: list[RelationshipItem] = Field(default_factory=list)
+    conditional: ConditionalRelationship | None = None
+    note: str | None = None
+
+
 class QueryResponse(BaseModel):
     answer: str
     analytics_used: list[str]
     regime_context: RegimeContext | None = None
     anomaly_assessment: AnomalyAssessment | None = None
     similarity_results: list[SimilarSession] = Field(default_factory=list)
+    clustering_result: ClusteringResult | None = None
+    relationships_result: RelationshipsResult | None = None
     data_date: str
     model_versions: dict[str, str]
     response_time_ms: float

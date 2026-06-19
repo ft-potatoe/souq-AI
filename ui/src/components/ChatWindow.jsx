@@ -4,6 +4,8 @@ import AnomalyIndicator from './AnomalyIndicator';
 import SimilarityCard from './SimilarityCard';
 import SimilarityChart from './SimilarityChart';
 import AnalyticsPanel from './AnalyticsPanel';
+import ClusteringCard from './ClusteringCard';
+import RelationshipsCard from './RelationshipsCard';
 import './ChatWindow.css';
 
 const SUGGESTED_QUESTIONS = [
@@ -307,6 +309,8 @@ function Message({ msg, date }) {
   const similarity = msg.payload?.similarity ?? [];
   const anomalyAssessment = msg.payload?.anomaly ?? null;
   const regime = msg.payload?.regime ?? null;
+  const clustering = msg.payload?.clustering ?? null;
+  const relationships = msg.payload?.relationships ?? null;
 
   return (
     <div className="msg msg--assistant">
@@ -337,6 +341,9 @@ function Message({ msg, date }) {
                 <SimilarityChart matches={similarity} />
               </div>
             )}
+
+            {clustering && <ClusteringCard clustering={clustering} />}
+            {relationships && <RelationshipsCard relationships={relationships} />}
 
             {msg.payload && <AnalyticsPanel payload={msg.payload} />}
 
@@ -522,10 +529,10 @@ export default function ChatWindow({ date, disabled, onNewMessage, onDateChange,
   );
 }
 
-// Pull analytics bucket results out of the API response for AnalyticsPanel
+// Pull analytics bucket results out of the API response for AnalyticsPanel / cards
 function buildAnalyticsBuckets(data) {
-  // The API doesn't return raw bucket results directly — they're inside the LLM payload
-  // We pass through what we have from the structured fields
-  // If the API is extended to return raw buckets, they'd be threaded here
-  return {};
+  const buckets = {};
+  if (data.clustering_result) buckets.clustering = data.clustering_result;
+  if (data.relationships_result) buckets.relationships = data.relationships_result;
+  return buckets;
 }

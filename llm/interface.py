@@ -1,6 +1,6 @@
 """
 llm/interface.py
-Thin wrapper around the Ollama HTTP API for qwen3:14b inference.
+Thin wrapper around the Ollama HTTP API for qwen3:8b inference.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ import re
 import httpx
 
 _OLLAMA_URL = "http://localhost:11434/api/generate"
-_MODEL = "qwen3:14b"
+_MODEL = "qwen3:8b"
 _TIMEOUT = 600.0
 
 # Ollama 0.30.6 does not reliably suppress qwen3 thinking blocks via think:false.
