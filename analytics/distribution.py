@@ -97,6 +97,28 @@ def _last_comparable_date(
     return str(dt.date())
 
 
+def _extremes(hist: pd.DataFrame, metric: str) -> dict:
+    """
+    Dataset-wide min and max of *metric* over the supplied history, each paired
+    with the date it occurred on. Answers "biggest drop / highest volume / worst
+    day" style questions without the LLM ever computing the extremum itself.
+    """
+    valid = hist[[metric, "date"]].dropna(subset=[metric])
+    if valid.empty:
+        return {
+            "min_value": None, "min_date": None,
+            "max_value": None, "max_date": None,
+        }
+    min_row = valid.loc[valid[metric].idxmin()]
+    max_row = valid.loc[valid[metric].idxmax()]
+    return {
+        "min_value": round(float(min_row[metric]), 6),
+        "min_date": str(min_row["date"].date()),
+        "max_value": round(float(max_row[metric]), 6),
+        "max_date": str(max_row["date"].date()),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
@@ -140,6 +162,8 @@ def run(date: str, params: dict[str, Any]) -> dict:
     pct50 = round(float(valid.quantile(0.50)), 6) if not valid.empty else None
     pct75 = round(float(valid.quantile(0.75)), 6) if not valid.empty else None
 
+    extremes = _extremes(hist, metric)
+
     return {
         "metric": metric,
         "today_value": (
@@ -155,4 +179,5 @@ def run(date: str, params: dict[str, Any]) -> dict:
         "skewness": skewness,
         "kurtosis": kurtosis,
         "percentiles": {"p25": pct25, "p50": pct50, "p75": pct75},
+        "extremes": extremes,
     }

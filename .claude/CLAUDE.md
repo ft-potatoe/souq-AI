@@ -29,6 +29,15 @@ It never performs calculations and never invents statistics.
 3. This is NOT a forecasting system. No future price predictions anywhere.
 4. No Unicode arrows (→, x) in log messages — Windows cp1252 console will error.
    Use ASCII -> instead.
+5. NEVER write to, insert into, or DELETE from the live data stores during
+   verification/testing. This includes data/feedback/feedback.db, data/raw/*.parquet,
+   data/features/features_master.parquet, and models/*. These are untracked by git
+   (feedback.db is gitignored) and have NO backup — a stray INSERT/DELETE is
+   unrecoverable. To exercise store.store(), feedback_counts(), ingestion, or feature
+   code, point it at a throwaway temp DB / temp dir (the test suite does this via
+   pytest tmp_path — e.g. monkeypatch feedback.store._DB_PATH). If you must touch the
+   real DB read-only, use SELECT only. A bad cleanup query on feedback.db already wiped
+   real feedback once — do not repeat it.
 
 ## Data schemas (spec §16)
 - market_daily:  date, open, high, low, close, volume, value_traded, total_trades

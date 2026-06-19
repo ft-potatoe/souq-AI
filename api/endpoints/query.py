@@ -97,7 +97,12 @@ async def post_query(req: QueryRequest) -> QueryResponse:
     # Infer distribution metric from question when not explicitly supplied
     if "distribution" in matched and "distribution" not in params:
         q_lower = req.question.lower()
-        if any(kw in q_lower for kw in ("return", "skew", "gain", "loss", "daily change")):
+        if any(kw in q_lower for kw in (
+            "return", "skew", "gain", "loss", "daily change",
+            "drop", "fall", "decline", "down day", "biggest down",
+            "crash", "selloff", "sell-off", "rise", "rally", "jump", "surge",
+            "worst day", "best day",
+        )):
             params = {**params, "distribution": {"metric": "return_1d"}}
         elif any(kw in q_lower for kw in ("volume",)):
             params = {**params, "distribution": {"metric": "volume"}}

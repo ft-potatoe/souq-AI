@@ -283,7 +283,7 @@ class TestAT1_VolumePercentile:
         # (documented in CLAUDE.md) in addition to the directional frequency keys.
         allowed = self.EXPECTED_KEYS | {
             "sessions_below_today", "historical_frequency_below",
-            "skewness", "kurtosis", "percentiles",
+            "skewness", "kurtosis", "percentiles", "extremes",
         }
         unexpected = r.keys() - allowed
         assert not unexpected, f"Unexpected keys in output: {unexpected}"
@@ -292,6 +292,18 @@ class TestAT1_VolumePercentile:
         r = self._run(feat, last_date)
         assert r["metric"] == "volume"
         assert isinstance(r["metric"], str)
+
+    def test_extremes_match_fixture(self, feat, last_date):
+        r = self._run(feat, last_date)
+        ext = r["extremes"]
+        hist = feat[feat["date"] <= pd.Timestamp(last_date)]
+        valid = hist[["volume", "date"]].dropna(subset=["volume"])
+        exp_min = valid.loc[valid["volume"].idxmin()]
+        exp_max = valid.loc[valid["volume"].idxmax()]
+        assert ext["min_value"] == round(float(exp_min["volume"]), 6)
+        assert ext["min_date"] == str(exp_min["date"].date())
+        assert ext["max_value"] == round(float(exp_max["volume"]), 6)
+        assert ext["max_date"] == str(exp_max["date"].date())
 
     def test_today_value_matches_fixture(self, feat, last_date):
         r = self._run(feat, last_date)

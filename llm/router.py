@@ -48,6 +48,17 @@ BUCKET_KEYWORDS: dict[str, list[str]] = {
         "distribution", "percentile", "histogram", "percentile rank",
         "z-score", "zscore", "return range", "historical range", "return spread",
         "skew", "kurtosis", "how high", "how low", "relative to",
+        # extremes (dataset-wide min/max with date) — see distribution._extremes()
+        "biggest", "largest", "highest", "lowest", "smallest",
+        "worst day", "best day", "biggest drop", "biggest gain",
+        "single-day drop", "single day drop", "all-time", "record",
+        "most ever", "ever recorded",
+        # core metric words + generic "vs history" phrasing so a plain
+        # "how does X compare to history" lands on the distribution bucket
+        "volume", "turnover", "value traded", "trades",
+        "compare to history", "compared to history", "vs history",
+        "versus history", "compare to average", "above average",
+        "below average", "unusual", "typical", "normal for",
     ],
     "trend": [
         "price trend", "market trend", "index trend", "momentum", "sma",
@@ -59,9 +70,12 @@ BUCKET_KEYWORDS: dict[str, list[str]] = {
         "comparable", "past session", "resemble", "historical match", "has this happened",
     ],
     "gcc": [
+        # NOTE: "compare to" removed — it false-fired on generic comparisons
+        # like "compare to history/average". GCC peer comparisons are covered by
+        # the specific peer/market keywords plus "vs"/"versus" below.
         "gcc", "gulf", "regional", "peer market", "peer comparison", "gcc peer",
         "peer performance", "saudi", "tasi", "adx", "dfm",
-        "kse", "msm", "bse", "tadawul", "compare to", "vs", "versus",
+        "kse", "msm", "bse", "tadawul", "vs", "versus",
     ],
     "correlation": [
         "correlat", "relationship", "linked", "co-move", "move together", "rolling corr",
