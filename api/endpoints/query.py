@@ -65,6 +65,40 @@ async def post_query(req: QueryRequest) -> QueryResponse:
     bucket_results: dict[str, dict] = {}
     analytics_used: list[str] = []
 
+    # Infer date_from/date_to for flows range questions
+    if "flows" in matched and "flows" not in params:
+        from api._daterange import extract_date_range
+        d_from, d_to = extract_date_range(req.question, data_date)
+        if d_from:
+            params = {**params, "flows": {"date_from": d_from}}
+
+    # Infer correlation pair from question when not explicitly supplied
+    if "correlation" in matched and "correlation" not in params:
+        q_lower = req.question.lower()
+        # Detect metric_b (second subject after "and"/"vs"/"with")
+        if any(kw in q_lower for kw in ("turnover", "value traded", "value_traded")):
+            params = {**params, "correlation": {"metric_a": "foreign_net", "metric_b": "value_traded"}}
+        elif any(kw in q_lower for kw in ("volume",)):
+            params = {**params, "correlation": {"metric_a": "foreign_net", "metric_b": "volume"}}
+        elif any(kw in q_lower for kw in ("return", "index", "price")):
+            params = {**params, "correlation": {"metric_a": "foreign_net", "metric_b": "return_1d"}}
+        elif any(kw in q_lower for kw in ("domestic",)):
+            params = {**params, "correlation": {"metric_a": "foreign_net", "metric_b": "domestic_net"}}
+        elif any(kw in q_lower for kw in ("volatil",)):
+            params = {**params, "correlation": {"metric_a": "foreign_net", "metric_b": "volatility_20d"}}
+
+    # Infer distribution metric from question when not explicitly supplied
+    if "distribution" in matched and "distribution" not in params:
+        q_lower = req.question.lower()
+        if any(kw in q_lower for kw in ("return", "skew", "gain", "loss", "daily change")):
+            params = {**params, "distribution": {"metric": "return_1d"}}
+        elif any(kw in q_lower for kw in ("volume",)):
+            params = {**params, "distribution": {"metric": "volume"}}
+        elif any(kw in q_lower for kw in ("volatil",)):
+            params = {**params, "distribution": {"metric": "volatility_20d"}}
+        elif any(kw in q_lower for kw in ("foreign", "inflow", "outflow")):
+            params = {**params, "distribution": {"metric": "foreign_net"}}
+
     for bucket in matched:
         if bucket in _ANALYTICS_DISPATCH:
             try:

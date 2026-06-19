@@ -127,9 +127,9 @@ def run(date: str, params: dict[str, Any]) -> dict:
         ret = float(prow["daily_change_pct"]) / 100.0
         display = _MARKET_DISPLAY.get(mkt, mkt)
         if mkt == "QSE":
-            qse_gcc_return_1d = round(ret, 6)
+            qse_gcc_return_1d = round(ret * 100, 4)
         else:
-            peer_returns[display] = round(ret, 6)
+            peer_returns[display] = round(ret * 100, 4)
 
     # Fall back to features if gcc_daily doesn't have today
     qse_return_1d_feat = float(row["return_1d"])
@@ -161,21 +161,31 @@ def run(date: str, params: dict[str, Any]) -> dict:
     def _safe(v: float) -> float | None:
         return None if (v is None or math.isnan(v)) else v
 
+    op_interpretation = (
+        "underperforming" if (op_rate is not None and op_rate < 0.50) else
+        "outperforming" if (op_rate is not None and op_rate >= 0.50) else None
+    )
+
+    def _pct(v: float) -> float | None:
+        return None if (v is None or math.isnan(v)) else round(v * 100, 4)
+
     out: dict[str, Any] = {
         "date": str(ts.date()),
-        "qse_return_1d": _safe(qse_return_1d_feat),
-        "gcc_avg_return_1d": _safe(gcc_avg_today),
-        "qse_vs_gcc_spread_1d": _safe(qse_vs_gcc_today),
-        "qse_rank_today": rank,
-        "total_peers": total_peers,
-        "peer_returns": peer_returns,
+        "units": "all return and spread values are in percent (%)",
+        "qse_return_1d_pct": _pct(qse_return_1d_feat),
+        "gcc_avg_return_1d_pct": _pct(gcc_avg_today),
+        "qse_vs_gcc_spread_1d_pct": _pct(qse_vs_gcc_today),
+        "qse_rank_among_all_markets_including_qse": rank,
+        "total_markets_including_qse": total_peers,
+        "peer_returns_pct": peer_returns,
         f"rolling_outperformance_rate_{op_window}d": op_rate,
+        f"rolling_outperformance_interpretation_{op_window}d": op_interpretation,
     }
 
-    # Add multi-horizon spreads (already has 1d, override with precomputed for 5d/20d)
+    # Add multi-horizon spreads in pct
     for h in horizons:
         if h != 1:
-            key = f"qse_vs_gcc_spread_{h}d"
-            out[key] = rel_perf.get(key)
+            raw = rel_perf.get(f"qse_vs_gcc_spread_{h}d")
+            out[f"qse_vs_gcc_spread_{h}d_pct"] = round(raw * 100, 4) if raw is not None else None
 
     return out

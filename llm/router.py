@@ -42,6 +42,7 @@ BUCKET_KEYWORDS: dict[str, list[str]] = {
         "flow", "foreign", "domestic", "buying", "buy volume", "buy pressure",
         "foreign buy", "domestic buy", "selling", "sold", "pressure",
         "inflow", "outflow", "investor", "sell volume", "sell pressure",
+        "turnover", "participation",
     ],
     "distribution": [
         "distribution", "percentile", "histogram", "percentile rank",
@@ -49,8 +50,9 @@ BUCKET_KEYWORDS: dict[str, list[str]] = {
         "skew", "kurtosis", "how high", "how low", "relative to",
     ],
     "trend": [
-        "trend", "momentum", "sma", "moving average", "slope", "direction",
-        "above", "below", "macd", "rsi", "bollinger", "atr",
+        "price trend", "market trend", "index trend", "momentum", "sma",
+        "moving average", "slope", "macd", "rsi", "bollinger", "atr",
+        "above sma", "below sma", "technical", "overbought", "oversold",
     ],
     "similarity": [
         "similar", "like this before", "historical analog", "analog",
@@ -63,6 +65,9 @@ BUCKET_KEYWORDS: dict[str, list[str]] = {
     ],
     "correlation": [
         "correlat", "relationship", "linked", "co-move", "move together", "rolling corr",
+        "map pattern", "pattern between", "relationship between", "link between",
+        "connection between", "interact", "drives", "driven by", "tied to",
+        "relate to", "related to", "association", "in sync", "tracks", "track",
     ],
     "seasonality": [
         "season", "day of week", "monday effect", "weekly pattern",

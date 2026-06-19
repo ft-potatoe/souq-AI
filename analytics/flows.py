@@ -94,9 +94,13 @@ def run(date: str, params: dict[str, Any]) -> dict:
     params:
         cumulative_windows (list[int], optional): default [5, 10, 20]
         pressure_window (int, optional): window for pressure_trend (default 10)
+        date_from (str, optional): ISO date — if provided, aggregate flows from
+            date_from to date (inclusive) and return range_aggregates instead of
+            rolling windows
     """
     cumulative_windows: list[int] = params.get("cumulative_windows", _CUMULATIVE_WINDOWS)
     pressure_window: int = int(params.get("pressure_window", 10))
+    date_from: str | None = params.get("date_from")
 
     hist = history_up_to(date)
     if hist.empty:
@@ -124,8 +128,9 @@ def run(date: str, params: dict[str, Any]) -> dict:
     def _safe(v: float) -> float | None:
         return None if math.isnan(v) else round(v, 4)
 
-    return {
+    out: dict[str, Any] = {
         "date": str(pd.Timestamp(date).date()),
+        "data_through": str(pd.Timestamp(date).date()),
         "foreign_net_today": round(foreign_net_today, 2),
         "domestic_net_today": round(domestic_net_today, 2),
         "dominant_flow": dominant,
@@ -136,3 +141,22 @@ def run(date: str, params: dict[str, Any]) -> dict:
         "foreign_flow_zscore": _safe(foreign_flow_zscore),
         "domestic_flow_zscore": _safe(domestic_flow_zscore),
     }
+
+    if date_from:
+        ts_from = pd.Timestamp(date_from)
+        ts_to = pd.Timestamp(date)
+        rng = hist[(hist["date"] >= ts_from) & (hist["date"] <= ts_to)]
+        if not rng.empty:
+            out["range_aggregates"] = {
+                "date_from": str(ts_from.date()),
+                "date_to": str(ts_to.date()),
+                "trading_sessions": len(rng),
+                "total_foreign_buy": round(float(rng["foreign_buy"].sum()), 2),
+                "total_foreign_sell": round(float(rng["foreign_sell"].sum()), 2),
+                "total_foreign_net": round(float(rng["foreign_net"].sum()), 2),
+                "total_domestic_buy": round(float(rng["domestic_buy"].sum()), 2),
+                "total_domestic_sell": round(float(rng["domestic_sell"].sum()), 2),
+                "total_domestic_net": round(float(rng["domestic_net"].sum()), 2),
+            }
+
+    return out

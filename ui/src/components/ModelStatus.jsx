@@ -16,7 +16,7 @@ export default function ModelStatus() {
   const feedback = data.feedback_counts ?? {};
   const feedbackEntries = Object.entries(feedback).filter(([k]) => k !== 'since');
   const since = feedback.since
-    ? new Date(feedback.since).toLocaleDateString()
+    ? new Date(feedback.since).toLocaleDateString('en-GB')
     : null;
 
   return (
@@ -39,7 +39,7 @@ export default function ModelStatus() {
         <>
           <span className="ms-sep" />
           <span className="ms-retrain">
-            retrained {new Date(data.last_retrain).toLocaleDateString()}
+            retrained {new Date(data.last_retrain).toLocaleDateString('en-GB')}
             {since && ` · feedback since ${since}`}
           </span>
         </>

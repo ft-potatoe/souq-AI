@@ -134,6 +134,12 @@ def run(date: str, params: dict[str, Any]) -> dict:
     else:
         sessions_extreme = int((valid <= today_value).sum())
 
+    skewness = round(float(valid.skew()), 4) if len(valid) >= 3 else None
+    kurtosis = round(float(valid.kurt()), 4) if len(valid) >= 4 else None
+    pct25 = round(float(valid.quantile(0.25)), 6) if not valid.empty else None
+    pct50 = round(float(valid.quantile(0.50)), 6) if not valid.empty else None
+    pct75 = round(float(valid.quantile(0.75)), 6) if not valid.empty else None
+
     return {
         "metric": metric,
         "today_value": (
@@ -146,4 +152,7 @@ def run(date: str, params: dict[str, Any]) -> dict:
         "last_comparable_date": last_comparable,
         "sessions_above_today" if direction == "above" else "sessions_below_today": sessions_extreme,
         "total_sessions": len(valid),
+        "skewness": skewness,
+        "kurtosis": kurtosis,
+        "percentiles": {"p25": pct25, "p50": pct50, "p75": pct75},
     }

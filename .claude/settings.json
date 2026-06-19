@@ -5,7 +5,9 @@
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173)",
       "Skill(code-review)",
       "Skill(code-review:*)",
-      "Bash(git diff *)"
+      "Bash(git diff *)",
+      "Bash(ollama list *)",
+      "Bash(python -c ' *)"
     ]
   }
 }

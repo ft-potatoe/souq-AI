@@ -7,7 +7,7 @@ pre-computed analytics — never raw data directly, never LLM inference of numbe
 
 ## Core architecture principle
 Raw Data -> Features -> Analytics + ML Models -> Structured JSON -> LLM -> Answer
-The LLM (qwen2.5:1.5b via Ollama at localhost:11434) receives only structured JSON.
+The LLM (qwen3:14b via Ollama at localhost:11434) receives only structured JSON.
 It never performs calculations and never invents statistics.
 
 ## Tech stack
@@ -15,7 +15,7 @@ It never performs calculations and never invents statistics.
 - React 18 + Vite frontend (ui/)
 - SQLite for feedback store (data/feedback/feedback.db)
 - Parquet for all feature and raw data storage
-- Ollama v0.30.6 running locally for LLM inference (qwen2.5:1.5b)
+- Ollama v0.30.6 running locally for LLM inference (qwen3:14b)
 - ta library for technical indicators (replaces pandas-ta due to numpy<2 constraint)
 
 ## Critical constraints — never violate these
@@ -156,8 +156,8 @@ GET /anomaly/{date}, POST /feedback, GET /models/status, GET /health
 - [DONE] tests/test_features.py             — 66 tests (added TestForwardReturns, 7 tests)
 - [DONE] feedback/store.py                  — SQLite store at data/feedback/feedback.db; 34 tests in tests/test_feedback_store.py
 - [DONE] Full test suite: 350 tests, all passing
-- [DONE] llm/interface.py  — query_llm(prompt, system) -> str; httpx POST to Ollama localhost:11434; qwen2.5:1.5b; temp=0.1, top_p=0.9, num_predict=450, num_ctx=8192, timeout=600s, stream=False
-- [DONE] llm/prompts.py    — SYSTEM_PROMPT (11 rules, spec §11.2); build_prompt(question, payload, history=None) -> str; multi-turn history injection
+- [DONE] llm/interface.py  — query_llm(prompt, system) -> str; httpx POST to Ollama localhost:11434; qwen3:14b; temp=0.1, top_p=0.9, num_predict=700, num_ctx=8192, timeout=600s, stream=False; _strip_thinking() removes <think> blocks
+- [DONE] llm/prompts.py    — SYSTEM_PROMPT (12 rules, spec §11.2); build_prompt(question, payload, history=None) -> str; multi-turn history injection
 - [DONE] llm/router.py     — BUCKET_KEYWORDS (10 buckets), BUCKET_PRIORITY, PAYLOAD_TOKEN_BUDGET=3500; match_buckets(); build_llm_payload(); compress_bucket(); estimate_tokens()
 - [DONE] api/ (main.py, endpoints/)               — all 10 spec endpoints; Pydantic models; CORS for localhost:5173
                                                    Start: uvicorn api.main:app --reload --port 8000
@@ -172,6 +172,7 @@ GET /anomaly/{date}, POST /feedback, GET /models/status, GET /health
                                              RegimeBadge (trend + vol pills), RegimeHistory (dual timelines),
                                              RegimeInline (vol pill in chat), AnomalyIndicator, SimilarityCard,
                                              SimilarityChart, AnalyticsPanel
+                                             ModelStatus date display uses en-GB locale (DD/MM/YYYY)
 
 ## feedback/store.py — implementation notes
 - feedback_counts() returns a dict with one key per feedback_type (count) PLUS a
@@ -212,6 +213,11 @@ GET /anomaly/{date}, POST /feedback, GET /models/status, GET /health
   applied unconditionally. Callers must not assume similarity is always trimmed to 3 matches.
 - compress_bucket() for "similarity" trims key "top_matches" (not "matches") — that is the
   key returned by similarity_ranker.rank(). Never change this key without updating both places.
+- "trend" keyword removed from trend bucket — it fired on "trend of foreign flows/GCC/volatility"
+  which are flows/gcc/vol questions. Trend bucket now requires specific technical terms:
+  "price trend", "market trend", "index trend", "sma", "rsi", "macd", "bollinger", "atr",
+  "moving average", "momentum", "overbought", "oversold", "above sma", "below sma", "technical".
+- api/_daterange.py supports additional patterns: "from YYYY to Month YYYY", "from YYYY to YYYY"
 - volatility_regime bucket keywords: "volatil", "vol regime", "low vol", "high vol",
   "options", "risk environment", "vol percentile", "vol spike", "vol compressed", etc.
   Bucket sits between regime and summary in BUCKET_PRIORITY.
@@ -245,11 +251,20 @@ GET /anomaly/{date}, POST /feedback, GET /models/status, GET /health
 - Shared helpers in api/_dates.py: resolve_date() (defaults to latest features_master row),
   symlink_target(), model_versions_snapshot(), MODEL_DIRS (all public)
   MODEL_DIRS now includes "vol_hmm" -> models/vol_hmm/; SYMLINK_NAMES["vol_hmm"] = "vol_hmm_current"
+- api/_daterange.py: extract_date_range(question, data_date) -> (date_from, date_to) | (None, None)
+  Deterministic NL date range parser. Handles: ISO ranges, ordinal ranges (1st of June to 4th of June 2026),
+  Month name ranges (June 1st to June 4th 2026), between months, single month, quarters (Q1/Q2/first quarter),
+  YTD/this year/for YYYY, last N days/weeks/months, since Month YYYY, since Day Month YYYY.
+  Always call this — never ask the LLM to parse dates.
 - POST /query pipeline: match_buckets -> analytics dispatch -> build_llm_payload ->
   build_prompt -> query_llm (run in thread executor — it is sync/blocking) -> QueryResponse
 - POST /query auto-runs volatility_regime.run() whenever "regime" bucket is matched and
   "volatility_regime" was not already in the matched buckets. Both results are merged into
   RegimeContext. Never skip the auto-run — vol regime is always useful with trend regime.
+- POST /query infers distribution metric from question keywords when not supplied in params:
+  return/skew/gain/loss -> return_1d; volume -> volume; volatil -> volatility_20d; foreign/inflow/outflow -> foreign_net
+- POST /query infers flows date_from via extract_date_range() when "flows" bucket matched and
+  no explicit params supplied. date_from is passed to flows.run() to populate range_aggregates.
 - query_llm (llm/interface.py) uses httpx.Client (sync, 120 s). All callers in async handlers
   MUST use asyncio.to_thread(query_llm, prompt, system) — never call directly.
   Similarly regime.run() and _build_regime_history() are offloaded with asyncio.to_thread().
@@ -306,6 +321,27 @@ GET /anomaly/{date}, POST /feedback, GET /models/status, GET /health
   in llm/prompts.py exactly — keep these in sync. The role filter is not needed (all messages
   are 'user' or 'assistant' by construction). messages is the pre-send render closure, which
   correctly excludes the in-flight turn and reflects all prior completed exchanges.
+
+## analytics/distribution.py — implementation notes
+- run() now returns skewness, kurtosis, and percentiles (p25/p50/p75) in addition to
+  percentile_rank, historical_frequency, rolling_stats, last_comparable_date.
+- Default metric is "volume"; POST /query infers metric from question keywords automatically.
+
+## analytics/flows.py — implementation notes
+- run() accepts optional date_from param. When provided, computes range_aggregates block:
+  total_foreign_buy, total_foreign_sell, total_foreign_net, total_domestic_buy,
+  total_domestic_sell, total_domestic_net, trading_sessions, date_from, date_to.
+- Without date_from, returns standard rolling cumulative_foreign_net/cumulative_domestic_net
+  windows (5d/10d/20d) only.
+
+## analytics/gcc.py — implementation notes
+- All return and spread values in the payload are in percent (%) — keys suffixed _pct.
+  Never multiply by 100 again. The "units" field in the payload makes this explicit.
+- peer_returns_pct: dict of {market_display_name: return_pct} for today.
+- qse_rank_among_all_markets_including_qse: rank where 1=best; total_markets_including_qse
+  is the denominator. Key names are unambiguous to prevent LLM misreading.
+- rolling_outperformance_interpretation_{N}d: pre-computed "outperforming"/"underperforming"
+  label alongside the rate — LLM must use this label, never infer from the number alone.
 
 ## ml/anomaly_scorer.py — implementation notes
 - _cross_val_metrics(X, y) takes no model arg — always uses _RF_PARAMS internally
