@@ -7,7 +7,7 @@ pre-computed analytics — never raw data directly, never LLM inference of numbe
 
 ## Core architecture principle
 Raw Data -> Features -> Analytics + ML Models -> Structured JSON -> LLM -> Answer
-The LLM (qwen3:14b via Ollama at localhost:11434) receives only structured JSON.
+The LLM (qwen3:8b via Ollama at localhost:11434) receives only structured JSON.
 It never performs calculations and never invents statistics.
 
 ## Tech stack
@@ -15,7 +15,7 @@ It never performs calculations and never invents statistics.
 - React 18 + Vite frontend (ui/)
 - SQLite for feedback store (data/feedback/feedback.db)
 - Parquet for all feature and raw data storage
-- Ollama v0.30.6 running locally for LLM inference (qwen3:14b)
+- Ollama v0.30.6 running locally for LLM inference (qwen3:8b)
 - ta library for technical indicators (replaces pandas-ta due to numpy<2 constraint)
 
 ## Critical constraints — never violate these
@@ -59,6 +59,16 @@ It never performs calculations and never invents statistics.
   Minimum 250 sessions before surfacing labels; flip-rate gate <= 10%
   Model artifact: models/vol_hmm/vol_hmm_v1.pkl, symlink vol_hmm_current
   Additional output: volatility_20d_percentile (rank vs full history)
+- Clustering (day-type discovery): sklearn.cluster.HDBSCAN in ml/clustering.py
+  Unsupervised market-state discovery + noise label (-1) as a second anomaly signal
+  Features (9, NO forward returns): return_1d, return_5d, volatility_20d, volume_zscore,
+  breadth_ratio, foreign_flow_zscore, domestic_flow_zscore, rsi_14, price_vs_sma20_pct
+  Params: min_cluster_size=15, min_samples=5, store_centers="centroid"
+  Validation gate: silhouette >= 0.20 AND noise_fraction <= 0.40 AND n_clusters >= 2
+  Minimum 250 sessions before surfacing labels
+  Model artifact: models/clustering/hdbscan_v1.pkl (dict {scaler, model, meta}), symlink hdbscan_current
+  Today is assigned by nearest centroid in scaled space (HDBSCAN has no stable per-row predict)
+  Descriptive only — clusters are historical groupings, never predictions
 
 ## Feature engineering notes (scripts/features/build_features.py)
 - Price column is `close` (not index_value)
@@ -87,6 +97,15 @@ It never performs calculations and never invents statistics.
 - Quarantine pattern: failing rows written to _quarantine.parquet, never silently dropped
 - Gap check: halts pipeline (exit code 2) if >3 consecutive QSE trading days missing
 - QSE trading week: Sun-Thu; Fri/Sat excluded from gap and validation checks
+- MERGE-ON-WRITE (default): process_dataset(mode="merge") reads the existing
+  data/raw/<dataset>.parquet, concats new rows, dedups by _dedup_key() keeping the LAST
+  (newest wins) — so incremental/overlapping slices preserve history instead of truncating.
+  _merge_with_existing() runs BEFORE _check_consecutive_missing so the gap check sees the
+  full combined timeline. --replace flag (mode="replace") restores the old overwrite behaviour.
+  _dedup_key(): ["date","market_name"] for gcc_daily, else ["date"]. tests/test_ingest.py.
+- scripts/refresh.py: one-command chain (ingest -> build_features -> weekly_retrain), stops
+  on failure; flags --src/--replace/--skip-ingest/--skip-retrain. Retrain "failure" is
+  surfaced but non-fatal (core-model gate auto-rollback keeps prior model).
 
 ## Retraining
 - Script: scripts/retrain/weekly_retrain.py
@@ -113,6 +132,11 @@ It never performs calculations and never invents statistics.
   vol HMM failure is NON-BLOCKING — it does not set overall_status="failed".
   Only the three core models (anomaly_scorer, similarity_ranker, regime_hmm) drive
   overall_status. The `any_failed` check explicitly filters to `core_models`.
+- _step_clustering() (step 6c) follows the same NON-BLOCKING pattern as vol HMM, but its gate
+  is INTERNAL to ml.clustering.train_and_save() (silhouette/noise/n_clusters), which raises
+  ValueError — there is no flip-rate concept (clustering is not a sequence labeller). On gate
+  failure the prior artifact (scaler, model, meta) is restored via _save_artifact(). clustering
+  is NOT in core_models, so its failure never flips overall_status.
 - weekly_retrain.py writes status="success" only when every non-skipped CORE model deployed.
   Any core failure writes status="failed", so feedback_counts() re-counts all items since the
   last fully-successful run next week (intentionally conservative).
@@ -151,27 +175,34 @@ GET /anomaly/{date}, POST /feedback, GET /models/status, GET /health
 - [DONE] End-to-end test: 300 trading days, all sanity checks pass
 - [DONE] analytics/ modules (distribution, trend, correlation, seasonality, flows, gcc, regime)
 - [DONE] analytics/volatility_regime.py     — 2-state vol HMM; low_vol/high_vol; vol percentile output
+- [DONE] analytics/relationships.py         — deterministic relationship discovery; Spearman scan over all
+                                               numeric feature pairs + conditional-decile analysis; descriptive
+                                               co-movement only (associations, not causation); tests/test_relationships.py
+- [DONE] ml/clustering.py                   — HDBSCAN market-state discovery (sklearn.cluster.HDBSCAN, no new dep);
+                                               full lifecycle (versioned artifact, gate, auto-train); descriptive
+                                               day-types, never predictive; tests/test_clustering.py
 - [DONE] ml/anomaly_scorer.py               — RF anomaly scorer; tests/test_anomaly_scorer.py (44 tests)
 - [DONE] ml/similarity_ranker.py            — k-NN(40) + XGBRanker re-score to top-10; safe_forward_returns leakage guard; 80/20 holdout NDCG@10 validation; tests/test_similarity_ranker.py (54 tests)
 - [DONE] tests/test_features.py             — 66 tests (added TestForwardReturns, 7 tests)
 - [DONE] feedback/store.py                  — SQLite store at data/feedback/feedback.db; 34 tests in tests/test_feedback_store.py
-- [DONE] Full test suite: 350 tests, all passing
-- [DONE] llm/interface.py  — query_llm(prompt, system) -> str; httpx POST to Ollama localhost:11434; qwen3:14b; temp=0.1, top_p=0.9, num_predict=700, num_ctx=8192, timeout=600s, stream=False; _strip_thinking() removes <think> blocks
-- [DONE] llm/prompts.py    — SYSTEM_PROMPT (12 rules, spec §11.2); build_prompt(question, payload, history=None) -> str; multi-turn history injection
-- [DONE] llm/router.py     — BUCKET_KEYWORDS (10 buckets), BUCKET_PRIORITY, PAYLOAD_TOKEN_BUDGET=3500; match_buckets(); build_llm_payload(); compress_bucket(); estimate_tokens()
+- [DONE] Full test suite: 378 tests, all passing (incl. test_relationships.py, test_clustering.py, test_ingest.py)
+- [DONE] llm/interface.py  — query_llm(prompt, system) -> str; httpx POST to Ollama localhost:11434; qwen3:8b; temp=0.1, top_p=0.9, num_predict=700, num_ctx=8192, timeout=600s, stream=False; _strip_thinking() removes <think> blocks
+- [DONE] llm/prompts.py    — SYSTEM_PROMPT (15 rules: +14 clustering, +15 associations-not-causation); build_prompt(question, payload, history=None) -> str; multi-turn history injection
+- [DONE] llm/router.py     — BUCKET_KEYWORDS (12 buckets: +clustering, +relationships), BUCKET_PRIORITY, PAYLOAD_TOKEN_BUDGET=3500; match_buckets(); build_llm_payload(); compress_bucket(); estimate_tokens()
 - [DONE] api/ (main.py, endpoints/)               — all 10 spec endpoints; Pydantic models; CORS for localhost:5173
                                                    Start: uvicorn api.main:app --reload --port 8000
-- [DONE] scripts/retrain/weekly_retrain.py  — 8-step pipeline + step 6b (vol HMM); feedback thresholds (anomaly>=10, ranker>=20); HMM always retrains; logs/retrain_log.jsonl; UVICORN_PID reload
+- [DONE] scripts/retrain/weekly_retrain.py  — 8-step pipeline + step 6b (vol HMM) + step 6c (clustering); feedback thresholds (anomaly>=10, ranker>=20); HMM + clustering always retrain; logs/retrain_log.jsonl; UVICORN_PID reload
 - [DONE] scripts/retrain/train_anomaly.py  — standalone anomaly_scorer retrainer; --force flag
 - [DONE] scripts/retrain/train_ranker.py   — standalone similarity_ranker retrainer; --force flag
 - [DONE] scripts/retrain/train_hmm.py      — standalone trend HMM refitter; semantic flip-rate gate; atomic rollback on failure
 - [DONE] scripts/retrain/train_vol_hmm.py  — standalone vol HMM refitter; semantic flip-rate gate; atomic rollback on failure
+- [DONE] scripts/retrain/train_clustering.py — standalone HDBSCAN refitter; internal gate (silhouette>=0.20, noise<=0.40, n_clusters>=2); atomic restore on failure; no --force/threshold (always retrains)
 - [DONE] scripts/models/rollback.py        — updates _current symlink/ptr; logs rollback entry to retrain_log.jsonl
 - [DONE] ui/ React components              — ChatWindow (date-aware queries, date chip, detected-date sync,
                                              markdown table rendering with grid lines),
                                              RegimeBadge (trend + vol pills), RegimeHistory (dual timelines),
                                              RegimeInline (vol pill in chat), AnomalyIndicator, SimilarityCard,
-                                             SimilarityChart, AnalyticsPanel
+                                             SimilarityChart, AnalyticsPanel, ClusteringCard, RelationshipsCard
                                              ModelStatus date display uses en-GB locale (DD/MM/YYYY)
 
 ## feedback/store.py — implementation notes
@@ -251,6 +282,8 @@ GET /anomaly/{date}, POST /feedback, GET /models/status, GET /health
 - Shared helpers in api/_dates.py: resolve_date() (defaults to latest features_master row),
   symlink_target(), model_versions_snapshot(), MODEL_DIRS (all public)
   MODEL_DIRS now includes "vol_hmm" -> models/vol_hmm/; SYMLINK_NAMES["vol_hmm"] = "vol_hmm_current"
+  MODEL_DIRS also includes "clustering" -> models/clustering/; SYMLINK_NAMES["clustering"] = "hdbscan_current"
+  model_versions_snapshot() iterates MODEL_DIRS, so clustering auto-appears in GET /models/status
 - api/_daterange.py: extract_date_range(question, data_date) -> (date_from, date_to) | (None, None)
   Deterministic NL date range parser. Handles: ISO ranges, ordinal ranges (1st of June to 4th of June 2026),
   Month name ranges (June 1st to June 4th 2026), between months, single month, quarters (Q1/Q2/first quarter),
@@ -326,6 +359,36 @@ GET /anomaly/{date}, POST /feedback, GET /models/status, GET /health
 - run() now returns skewness, kurtosis, and percentiles (p25/p50/p75) in addition to
   percentile_rank, historical_frequency, rolling_stats, last_comparable_date.
 - Default metric is "volume"; POST /query infers metric from question keywords automatically.
+
+## analytics/relationships.py — implementation notes
+- Deterministic (never trains). The machine-driven counterpart to correlation.py: correlation.py
+  compares two USER-NAMED features; relationships.py SCANS all numeric pairs and finds the strong ones.
+- scan_relationships(): Spearman (rank corr) over all candidate pairs; keeps |rho| >= min_strength
+  (0.4) with >= min_overlap (60) paired non-NaN observations; ranked by |rho| desc.
+- _candidate_columns() drops forward returns (leakage), date, calendar/id cols, and raw OHLC/SMA.
+  _is_trivial_pair() additionally drops definitional duplicates (a column vs its own z-score /
+  window variant, e.g. volume vs volume_zscore, volatility_20d vs volatility_60d) so the ranking
+  surfaces genuine, non-obvious relationships rather than identities.
+- conditional_decile(): rank-based bottom decile of `given` (nsmallest, NOT a <= value threshold,
+  which would pull in tied blocks); reports how often `observed` is above its all-history median
+  vs the 50% baseline. Returns None if `observed` is essentially constant or < min_overlap rows.
+- run() defaults the conditional's given/observed to the strongest pair when not supplied in params.
+- Output keys: primary_relationships (top 5), strongest_relationships (top 15), conditional, note.
+  ALWAYS carries note="Associations only -- co-movement, not causation." Router bucket "relationships".
+
+## ml/clustering.py — implementation notes
+- Uses sklearn.cluster.HDBSCAN (sklearn >= 1.3) — NO hdbscan package / compiler dependency.
+- cluster(date, params) auto-trains on first call (RuntimeError if auto-train fails), mirroring
+  anomaly_scorer.score(). train_and_save() raises ValueError on the internal gate.
+- _label_for_profile() builds deterministic human-readable labels from each cluster's mean feature
+  z-scores (e.g. high volatility_20d + negative return_1d -> "High-vol selloff"). Stable across
+  retrains because it depends only on the profile, not on HDBSCAN's arbitrary integer state IDs.
+- meta.cluster_profiles precomputes per-cluster size/label/means + an internal _centroid_z used for
+  nearest-centroid assignment of the queried row (stripped from the public all_clusters output).
+- Today may be assigned cluster_id = -1 / is_outlier=True (far from every centroid) — surfaced as
+  "Atypical / outlier day", a second unsupervised anomaly signal independent of anomaly_scorer.
+- Router bucket "clustering"; keywords kept specific to avoid collision with "regime" and generic
+  "pattern". Compress handler drops member_dates_sample and trims to the 3 largest clusters.
 
 ## analytics/flows.py — implementation notes
 - run() accepts optional date_from param. When provided, computes range_aggregates block:

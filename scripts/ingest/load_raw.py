@@ -8,7 +8,13 @@ Datasets handled:
   breadth_daily  – advance/decline breadth data
 
 Run:
-  python scripts/ingest/load_raw.py --src <source_dir>
+  python scripts/ingest/load_raw.py --src <source_dir>            # merge (default)
+  python scripts/ingest/load_raw.py --src <source_dir> --replace  # fresh overwrite
+
+By default new rows are MERGED into the existing data/raw/<dataset>.parquet:
+new rows win on overlapping keys (date, or date+market_name for gcc_daily), so
+incremental or overlapping slices never truncate history. Use --replace only for
+a deliberate clean start.
 """
 
 import argparse
@@ -264,7 +270,53 @@ VALIDATORS = [
 ]
 
 
-def process_dataset(src_path: Path, dataset: str) -> bool:
+def _dedup_key(dataset: str) -> list[str]:
+    """Primary key used to dedup rows: gcc_daily is keyed by (date, market_name)."""
+    return ["date", "market_name"] if dataset == "gcc_daily" else ["date"]
+
+
+def _merge_with_existing(clean: pd.DataFrame, dataset: str) -> pd.DataFrame:
+    """
+    Merge freshly-ingested *clean* rows into the existing stored Parquet so the
+    full history is preserved. New rows WIN on overlapping keys (date, or
+    date+market_name for gcc_daily). This makes incremental/overlapping slices
+    safe: feeding Mar-Sep 2026 on top of Jan 2024-Jun 2026 yields the union,
+    with Mar-Jun 2026 taking the newly-ingested values.
+    """
+    out_path = RAW_DIR / f"{dataset}.parquet"
+    if not out_path.exists():
+        return clean
+
+    try:
+        existing = pd.read_parquet(out_path)
+    except Exception as exc:
+        logger.warning(
+            "[%s] Could not read existing parquet for merge (%s); writing new data only.",
+            dataset, exc,
+        )
+        return clean
+
+    existing["date"] = pd.to_datetime(existing["date"])
+    key = _dedup_key(dataset)
+
+    # Concat with NEW rows last so keep="last" lets new values win on overlap.
+    combined = pd.concat([existing, clean], ignore_index=True)
+    before = len(combined)
+    combined = (
+        combined.sort_values("date")
+        .drop_duplicates(subset=key, keep="last")
+        .reset_index(drop=True)
+    )
+    overlap = before - len(combined)
+    logger.info(
+        "[%s] Merged with existing: %d existing + %d new -> %d rows "
+        "(%d overlapping keys updated).",
+        dataset, len(existing), len(clean), len(combined), overlap,
+    )
+    return combined
+
+
+def process_dataset(src_path: Path, dataset: str, mode: str = "merge") -> bool:
     logger.info("Processing [%s] from %s", dataset, src_path.name)
 
     try:
@@ -286,6 +338,14 @@ def process_dataset(src_path: Path, dataset: str) -> bool:
         clean, q = validator(clean, dataset)
         if not q.empty:
             all_quarantine.append(q)
+
+    # Merge into existing history (unless --replace was requested). Done BEFORE the
+    # gap check so a partial slice is validated against the full combined timeline,
+    # not just its own narrow date range.
+    if mode == "merge":
+        clean = _merge_with_existing(clean, dataset)
+    else:
+        logger.info("[%s] mode=replace: overwriting existing data (no merge).", dataset)
 
     # Consecutive missing days check — halts pipeline on violation
     _check_consecutive_missing(clean, dataset)
@@ -347,7 +407,14 @@ def main():
         choices=list(KNOWN_DATASETS),
         help="Process a single dataset (default: all discovered).",
     )
+    parser.add_argument(
+        "--replace", action="store_true",
+        help="Overwrite existing data instead of merging into it. Use only for a "
+             "deliberate fresh start; the default MERGES new rows into history "
+             "(new values win on overlapping dates).",
+    )
     args = parser.parse_args()
+    mode = "replace" if args.replace else "merge"
 
     src_dir: Path = args.src
     if not src_dir.is_dir():
@@ -369,7 +436,7 @@ def main():
     success = True
     for dataset, path in file_map.items():
         try:
-            ok = process_dataset(path, dataset)
+            ok = process_dataset(path, dataset, mode=mode)
             if not ok:
                 success = False
         except RuntimeError as exc:
