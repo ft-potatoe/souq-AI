@@ -279,7 +279,12 @@ class TestAT1_VolumePercentile:
     def test_no_extra_surprise_keys(self, feat, last_date):
         """Schema is stable — unknown keys break the LLM payload contract."""
         r = self._run(feat, last_date)
-        allowed = self.EXPECTED_KEYS | {"sessions_below_today", "historical_frequency_below"}
+        # distribution.run() also returns skewness, kurtosis and percentiles
+        # (documented in CLAUDE.md) in addition to the directional frequency keys.
+        allowed = self.EXPECTED_KEYS | {
+            "sessions_below_today", "historical_frequency_below",
+            "skewness", "kurtosis", "percentiles",
+        }
         unexpected = r.keys() - allowed
         assert not unexpected, f"Unexpected keys in output: {unexpected}"
 
@@ -1206,17 +1211,22 @@ class TestAT8_GCCOutperformance:
     qse_vs_gcc_spread.
     """
 
+    # gcc.run() returns all return/spread values in percent (keys suffixed _pct),
+    # uses unambiguous rank/total key names, and adds a pre-computed outperformance
+    # interpretation label (see CLAUDE.md "analytics/gcc.py implementation notes").
     EXPECTED_KEYS = {
         "date",
-        "qse_return_1d",
-        "gcc_avg_return_1d",
-        "qse_vs_gcc_spread_1d",
-        "qse_rank_today",
-        "total_peers",
-        "peer_returns",
+        "units",
+        "qse_return_1d_pct",
+        "gcc_avg_return_1d_pct",
+        "qse_vs_gcc_spread_1d_pct",
+        "qse_rank_among_all_markets_including_qse",
+        "total_markets_including_qse",
+        "peer_returns_pct",
         "rolling_outperformance_rate_60d",
-        "qse_vs_gcc_spread_5d",
-        "qse_vs_gcc_spread_20d",
+        "rolling_outperformance_interpretation_60d",
+        "qse_vs_gcc_spread_5d_pct",
+        "qse_vs_gcc_spread_20d_pct",
     }
     PEER_NAMES = {"Tadawul", "ADX", "DFM", "KSE", "MSM", "BSE"}
 
@@ -1270,69 +1280,72 @@ class TestAT8_GCCOutperformance:
 
     def test_qse_return_1d_type(self, feat, last_date):
         r = self._run(feat, last_date)
-        val = r["qse_return_1d"]
+        val = r["qse_return_1d_pct"]
         assert val is None or isinstance(val, float)
 
     def test_qse_return_1d_matches_features(self, feat, last_date):
         r = self._run(feat, last_date)
-        expected = float(feat[feat["date"] == pd.Timestamp(last_date)]["return_1d"].iloc[0])
-        if r["qse_return_1d"] is not None and not math.isnan(expected):
-            assert abs(r["qse_return_1d"] - expected) < 1e-8
+        # Module returns the value in percent (return_1d * 100).
+        expected = float(feat[feat["date"] == pd.Timestamp(last_date)]["return_1d"].iloc[0]) * 100
+        if r["qse_return_1d_pct"] is not None and not math.isnan(expected):
+            # Module rounds to 4 decimals in percent space.
+            assert abs(r["qse_return_1d_pct"] - expected) < 1e-3
 
     def test_gcc_avg_return_1d_type(self, feat, last_date):
         r = self._run(feat, last_date)
-        val = r["gcc_avg_return_1d"]
+        val = r["gcc_avg_return_1d_pct"]
         assert val is None or isinstance(val, float)
 
     def test_qse_vs_gcc_spread_1d_type(self, feat, last_date):
         r = self._run(feat, last_date)
-        val = r["qse_vs_gcc_spread_1d"]
+        val = r["qse_vs_gcc_spread_1d_pct"]
         assert val is None or isinstance(val, float)
 
     def test_spread_1d_equals_qse_minus_avg(self, feat, last_date):
-        """spread_1d == qse_return_1d - gcc_avg_return_1d (from patched features)."""
+        """spread_1d == qse_return_1d - gcc_avg_return_1d (all in percent)."""
         r = self._run(feat, last_date)
-        qse = r["qse_return_1d"]
-        avg = r["gcc_avg_return_1d"]
-        spread = r["qse_vs_gcc_spread_1d"]
+        qse = r["qse_return_1d_pct"]
+        avg = r["gcc_avg_return_1d_pct"]
+        spread = r["qse_vs_gcc_spread_1d_pct"]
         if all(v is not None for v in (qse, avg, spread)):
-            assert abs(spread - (qse - avg)) < 1e-6
+            # Each operand is independently rounded to 4 decimals in percent space.
+            assert abs(spread - (qse - avg)) < 1e-3
 
     def test_qse_rank_today_type(self, feat, last_date):
         r = self._run(feat, last_date)
-        rank = r["qse_rank_today"]
+        rank = r["qse_rank_among_all_markets_including_qse"]
         assert rank is None or isinstance(rank, int)
 
     def test_qse_rank_positive(self, feat, last_date):
         r = self._run(feat, last_date)
-        rank = r["qse_rank_today"]
+        rank = r["qse_rank_among_all_markets_including_qse"]
         if rank is not None:
             assert rank >= 1
 
     def test_qse_rank_within_total_peers(self, feat, last_date):
         r = self._run(feat, last_date)
-        rank = r["qse_rank_today"]
-        total = r["total_peers"]
+        rank = r["qse_rank_among_all_markets_including_qse"]
+        total = r["total_markets_including_qse"]
         if rank is not None:
             assert rank <= total
 
     def test_total_peers_is_7(self, feat, last_date):
-        """Synthetic gcc has 7 markets (QSE + 6 peers); total_peers counts all 7."""
+        """Synthetic gcc has 7 markets (QSE + 6 peers); the total counts all 7."""
         r = self._run(feat, last_date)
-        assert r["total_peers"] == 7
+        assert r["total_markets_including_qse"] == 7
 
     def test_peer_returns_has_six_peers(self, feat, last_date):
         r = self._run(feat, last_date)
-        assert set(r["peer_returns"].keys()) == self.PEER_NAMES
+        assert set(r["peer_returns_pct"].keys()) == self.PEER_NAMES
 
     def test_peer_returns_values_float_or_none(self, feat, last_date):
         r = self._run(feat, last_date)
-        for peer, val in r["peer_returns"].items():
+        for peer, val in r["peer_returns_pct"].items():
             assert val is None or isinstance(val, float), f"{peer}: wrong type"
 
     def test_peer_returns_are_finite(self, feat, last_date):
         r = self._run(feat, last_date)
-        for peer, val in r["peer_returns"].items():
+        for peer, val in r["peer_returns_pct"].items():
             if val is not None:
                 assert math.isfinite(val), f"{peer} return is not finite"
 
@@ -1360,23 +1373,23 @@ class TestAT8_GCCOutperformance:
 
     def test_spread_5d_type(self, feat, last_date):
         r = self._run(feat, last_date)
-        val = r["qse_vs_gcc_spread_5d"]
+        val = r["qse_vs_gcc_spread_5d_pct"]
         assert val is None or isinstance(val, float)
 
     def test_spread_5d_correct_value(self, feat, last_date):
-        """spread_5d == sum of last 5 qse_vs_gcc_spread values."""
+        """spread_5d == sum of last 5 qse_vs_gcc_spread values, expressed in percent."""
         gcc_raw = self._synthetic_gcc_raw(feat)
         feat2 = self._feat_with_gcc(feat, gcc_raw)
         spreads = feat2[feat2["date"] <= pd.Timestamp(last_date)]["qse_vs_gcc_spread"].dropna().tail(5)
-        expected = round(float(spreads.sum()), 6)
+        expected = round(float(spreads.sum()) * 100, 4)
         r = self._run(feat, last_date)
-        val = r["qse_vs_gcc_spread_5d"]
+        val = r["qse_vs_gcc_spread_5d_pct"]
         if val is not None:
-            assert abs(val - expected) < 1e-6
+            assert abs(val - expected) < 1e-4
 
     def test_spread_20d_type(self, feat, last_date):
         r = self._run(feat, last_date)
-        val = r["qse_vs_gcc_spread_20d"]
+        val = r["qse_vs_gcc_spread_20d_pct"]
         assert val is None or isinstance(val, float)
 
 
