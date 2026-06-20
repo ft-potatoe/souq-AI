@@ -292,6 +292,13 @@ GET /anomaly/{date}, POST /feedback, GET /models/status, GET /health
 - Rule 16: when payload contains "threshold_count", report it as an exact integer (never a
   fraction/%). When "date_range" block is present, confine the answer to that period and state
   it explicitly. Never extend to the full historical record if a date range was requested.
+- Rule 17: when correlation payload contains "period_spearman"/"period_pearson", those are the
+  definitive figures for the requested date range — report them first. Rolling-window figures
+  (rolling_corr_20d, rolling_corr_60d) are supplementary context only; never use them as the
+  primary answer to a date-scoped question.
+- Rule 18: when seasonality payload contains "ramadan_effect", report "pct_difference" verbatim
+  — never recompute it. Never call a Ramadan vs non-Ramadan difference "significant" or
+  "statistically significant" — the system runs no hypothesis test. Use descriptive language only.
 
 ## api/ — implementation notes
 - Entry point: api/main.py; run with uvicorn api.main:app --reload --port 8000
@@ -314,6 +321,16 @@ GET /anomaly/{date}, POST /feedback, GET /models/status, GET /health
   return/skew/gain/loss -> return_1d; volume -> volume; volatil -> volatility_20d; foreign/inflow/outflow -> foreign_net
 - POST /query infers flows date_from via extract_date_range() when "flows" bucket matched and
   no explicit params supplied. date_from is passed to flows.run() to populate range_aggregates.
+- POST /query auto-injects "relationships" bucket (given=volatility_20d, observed=foreign_net)
+  whenever BOTH "volatility_regime" AND "flows" are matched. This answers "who dominates during
+  low/high vol?" via conditional_decile: on lowest-vol days, is foreign_net above its median?
+  The relationships bucket is appended to matched and params set only if not already present.
+- POST /query seasonality multi-metric inference: detects _wants_volume, _wants_return,
+  _wants_volatil flags independently. When multiple are present, runs the primary metric and
+  merges extras via _seasonality_extra: volume+return -> primary=volume extra=[return_1d];
+  volume+volatil -> primary=volume extra=[volatility_20d]; return+volatil -> primary=return_1d
+  extra=[volatility_20d]. Each extra metric's ramadan_effect is merged into the payload so the
+  LLM sees all requested metrics in a single seasonality block.
 - query_llm (llm/interface.py) uses httpx.Client (sync, 120 s). All callers in async handlers
   MUST use asyncio.to_thread(query_llm, prompt, system) — never call directly.
   Similarly regime.run() and _build_regime_history() are offloaded with asyncio.to_thread().

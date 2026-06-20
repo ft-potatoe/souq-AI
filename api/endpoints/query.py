@@ -100,6 +100,18 @@ async def post_query(req: QueryRequest) -> QueryResponse:
         if "relationships" in matched and "relationships" not in params:
             params = {**params, "relationships": {"date_from": d_from}}
 
+    # When both volatility_regime and flows are matched, auto-add relationships
+    # so conditional_decile can answer "who dominates during low/high vol?" by
+    # computing: on lowest-vol days, is foreign_net above or below its median?
+    if "volatility_regime" in matched and "flows" in matched:
+        if "relationships" not in matched:
+            matched = list(matched) + ["relationships"]
+        if "relationships" not in params:
+            params = {**params, "relationships": {
+                "given": "volatility_20d",
+                "observed": "foreign_net",
+            }}
+
     # Infer correlation pair from question when not explicitly supplied
     if "correlation" in matched and "correlation" not in params:
         q_lower = req.question.lower()
@@ -183,9 +195,14 @@ async def post_query(req: QueryRequest) -> QueryResponse:
     # Infer seasonality metric from question when not explicitly supplied
     if "seasonality" in matched and "seasonality" not in params:
         q_lower = req.question.lower()
-        _wants_buy  = any(kw in q_lower for kw in ("buy", "buying", "purchased"))
-        _wants_sell = any(kw in q_lower for kw in ("sell", "selling", "sold"))
+        _wants_buy     = any(kw in q_lower for kw in ("buy", "buying", "purchased"))
+        _wants_sell    = any(kw in q_lower for kw in ("sell", "selling", "sold"))
         _wants_foreign = any(kw in q_lower for kw in ("foreign", "inflow", "outflow"))
+        _wants_volume  = any(kw in q_lower for kw in ("volume", "turnover", "value traded"))
+        _wants_return  = any(kw in q_lower for kw in (
+            "return", "gain", "loss", "drop", "fall", "rise", "daily change", "return range",
+        ))
+        _wants_volatil = any(kw in q_lower for kw in ("volatil",))
         # carry date_from from flows inference into seasonality params so the
         # day-of-week profile is filtered to the same period (e.g. "for 2026")
         _s_date_from = params.pop("_seasonality_date_from", None)
@@ -200,11 +217,19 @@ async def post_query(req: QueryRequest) -> QueryResponse:
             params = {**params, "seasonality": {**_s_base, "metric": "foreign_sell"}}
         elif _wants_foreign:
             params = {**params, "seasonality": {**_s_base, "metric": "foreign_net"}}
-        elif any(kw in q_lower for kw in (
-            "return", "gain", "loss", "drop", "fall", "rise", "daily change",
-        )):
+        elif _wants_volume and _wants_return:
+            # multi-metric: volume as primary, return_1d merged in as extra
+            params = {**params, "seasonality": {**_s_base, "metric": "volume"},
+                      "_seasonality_extra": ["return_1d"]}
+        elif _wants_volume and _wants_volatil:
+            params = {**params, "seasonality": {**_s_base, "metric": "volume"},
+                      "_seasonality_extra": ["volatility_20d"]}
+        elif _wants_return and _wants_volatil:
+            params = {**params, "seasonality": {**_s_base, "metric": "return_1d"},
+                      "_seasonality_extra": ["volatility_20d"]}
+        elif _wants_return:
             params = {**params, "seasonality": {**_s_base, "metric": "return_1d"}}
-        elif any(kw in q_lower for kw in ("volatil",)):
+        elif _wants_volatil:
             params = {**params, "seasonality": {**_s_base, "metric": "volatility_20d"}}
         else:
             # volume default — still apply date_from if present
