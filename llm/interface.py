@@ -8,17 +8,20 @@ llama-3.3-70b-versatile. Otherwise falls back to local Ollama qwen3:8b.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 
 import httpx
+
+_log = logging.getLogger(__name__)
 
 _THINK_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
 
 # Groq config
 _GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 _GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-_GROQ_MODEL = "llama-3.3-70b-versatile"
+_GROQ_MODEL = "llama-3.1-8b-instant"
 
 # Ollama fallback config
 _OLLAMA_URL = "http://localhost:11434/api/generate"
@@ -49,6 +52,15 @@ def _query_groq(prompt: str, system: str) -> str:
     }
     with httpx.Client(timeout=_TIMEOUT) as client:
         response = client.post(_GROQ_URL, headers=headers, json=payload)
+        if response.status_code == 429:
+            _log.warning(
+                "Groq rate limit hit -- "
+                "remaining_requests=%s/%s  remaining_tokens=%s/%s",
+                response.headers.get("x-ratelimit-remaining-requests", "?"),
+                response.headers.get("x-ratelimit-limit-requests", "?"),
+                response.headers.get("x-ratelimit-remaining-tokens", "?"),
+                response.headers.get("x-ratelimit-limit-tokens", "?"),
+            )
         response.raise_for_status()
         return response.json()["choices"][0]["message"]["content"].strip()
 

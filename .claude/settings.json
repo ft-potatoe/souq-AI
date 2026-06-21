@@ -63,7 +63,9 @@
       "PowerShell(Get-Process -Id 18528 2>&1)",
       "Bash(uvicorn api.main:app --port 8000 --log-level info)",
       "PowerShell(Get-NetTCPConnection -LocalPort 8000 -State Listen 2>&1)",
-      "PowerShell(wmic process where ProcessId=2764 get ProcessId,Name,CommandLine /format:list 2>&1)"
+      "PowerShell(wmic process where ProcessId=2764 get ProcessId,Name,CommandLine /format:list 2>&1)",
+      "Skill(firecrawl-scrape)",
+      "Skill(firecrawl-scrape:*)"
     ]
   }
 }

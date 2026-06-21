@@ -93,6 +93,7 @@ BUCKET_KEYWORDS: dict[str, list[str]] = {
         "map pattern", "pattern between", "relationship between", "link between",
         "connection between", "interact", "drives", "driven by", "tied to",
         "relate to", "related to", "association", "in sync", "tracks", "track",
+        "in tandem", "same direction", "synchronis", "synchroniz", "move in",
     ],
     "seasonality": [
         "season", "day of week", "days of the week", "day of the week",
@@ -119,6 +120,16 @@ BUCKET_KEYWORDS: dict[str, list[str]] = {
         "scan relationships", "which features", "what's associated",
         "what is associated", "inverse relationship", "what affects",
         "what tends to happen",
+        # broad scan phrasing — user asking for all pairs, not a named pair
+        "strongest relationship", "strongest statistical", "statistical relationship",
+        "all relationships", "relationships in the", "key relationships",
+        "main relationships", "top relationships", "what are the relationships",
+        "what relationships", "any relationships", "notable relationships",
+        # conditional / "when A then B" flow relationship phrasings
+        "higher when", "lower when", "more when", "less when",
+        "offset", "counterpart", "offset by", "counterbalance",
+        "step in when", "pick up when", "fill the gap",
+        "when foreign", "when domestic",
     ],
 }
 

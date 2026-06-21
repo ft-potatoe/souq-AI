@@ -131,6 +131,7 @@ def run(date: str, params: dict[str, Any]) -> dict:
     out: dict[str, Any] = {
         "date": str(pd.Timestamp(date).date()),
         "data_through": str(pd.Timestamp(date).date()),
+        "units": "all flow values are in QAR (Qatari Riyals)",
         "foreign_net_today": round(foreign_net_today, 2),
         "domestic_net_today": round(domestic_net_today, 2),
         "dominant_flow": dominant,
@@ -151,6 +152,7 @@ def run(date: str, params: dict[str, Any]) -> dict:
                 "date_from": str(ts_from.date()),
                 "date_to": str(ts_to.date()),
                 "trading_sessions": len(rng),
+                "units": "all totals in QAR (Qatari Riyals)",
                 "total_foreign_buy": round(float(rng["foreign_buy"].sum()), 2),
                 "total_foreign_sell": round(float(rng["foreign_sell"].sum()), 2),
                 "total_foreign_net": round(float(rng["foreign_net"].sum()), 2),

@@ -71,11 +71,10 @@ _EXCLUDE_COLS = {
     "unchanged",
     "total_listed",
     "total_traded",
-    # domestic_net kept out — ~mirror of foreign_net (daily flows net to ~0)
-    "domestic_net",
-    # domestic_buy/sell kept out — subsumed by domestic_net for scan purposes
-    "domestic_buy",
-    "domestic_sell",
+    # domestic_flow_zscore is a z-score transform of domestic_net — trivial pair
+    # domestic_net, domestic_buy, domestic_sell retained: they are the key columns
+    # for counterparty analysis (does domestic absorb foreign selling?).
+    # domestic_net ~ -foreign_net is a meaningful *discovery*, not a definitional identity.
     "domestic_flow_zscore",
     "foreign_net_cumulative_5d",
     "foreign_net_cumulative_20d",

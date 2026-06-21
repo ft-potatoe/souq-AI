@@ -117,11 +117,69 @@ async def post_query(req: QueryRequest) -> QueryResponse:
         "what moves with", "when x goes", "what affects", "what tends to happen",
         "discover relationship", "scan relationship", "hidden relationship",
         "what's associated", "what is associated", "inverse relationship",
+        "higher when", "lower when", "more when", "less when",
+        "when foreign", "when domestic", "offset", "counterpart", "counterbalance",
+        "step in when", "pick up when", "fill the gap",
     ]
     if "relationships" in matched and "flows" in matched:
         _ql_rel = req.question.lower()
         if any(kw in _ql_rel for kw in _RELATIONSHIP_INTENT_KWS):
             matched = [b for b in matched if b != "flows"]
+
+    # When the relationships bucket fires and the question explicitly names two
+    # flow-level features, set given/observed so conditional_decile targets that
+    # pair instead of defaulting to the strongest Spearman pair.
+    # Counterparty phrasing ("domestic buying when foreign selling") maps to net
+    # flows (foreign_net / domestic_net) which carry the counterparty signal best.
+    _COUNTERPARTY_KWS = [
+        "domestic buying", "domestic buy", "domestic buying higher",
+        "domestic step", "domestic pick",
+    ]
+    _FOREIGN_SELL_KWS = [
+        "foreign selling", "foreign sell", "foreign investors are selling",
+        "foreign investors sell", "foreigners sell", "when foreign sell",
+    ]
+    _FLOW_FEATURE_MAP = {
+        "foreign net": "foreign_net",
+        "domestic net": "domestic_net",
+        "foreign flow": "foreign_net",
+        "domestic flow": "domestic_net",
+        "foreign sell": "foreign_sell",
+        "foreign selling": "foreign_sell",
+        "foreign buy": "foreign_buy",
+        "foreign buying": "foreign_buy",
+        "domestic sell": "domestic_sell",
+        "domestic selling": "domestic_sell",
+        "domestic buy": "domestic_buy",
+        "domestic buying": "domestic_buy",
+        "breadth": "breadth_ratio",
+        "volatility": "volatility_20d",
+        "volume": "volume",
+        "return": "return_1d",
+    }
+    if "relationships" in matched and "relationships" not in params:
+        _ql_ff = req.question.lower()
+        # Counterparty shortcut: "domestic X when foreign Y" -> net flow pair
+        _is_counterparty = (
+            any(kw in _ql_ff for kw in _COUNTERPARTY_KWS)
+            and any(kw in _ql_ff for kw in _FOREIGN_SELL_KWS)
+        )
+        if _is_counterparty:
+            params = {**params, "relationships": {
+                "given": "foreign_net",
+                "observed": "domestic_net",
+            }}
+        else:
+            _detected = [
+                feat for phrase, feat in _FLOW_FEATURE_MAP.items()
+                if phrase in _ql_ff
+            ]
+            _detected_unique = list(dict.fromkeys(_detected))  # stable dedup
+            if len(_detected_unique) >= 2:
+                params = {**params, "relationships": {
+                    "given": _detected_unique[0],
+                    "observed": _detected_unique[1],
+                }}
 
     # When both volatility_regime and flows are matched, auto-add relationships
     # so conditional_decile can answer "who dominates during low/high vol?" by
@@ -140,7 +198,14 @@ async def post_query(req: QueryRequest) -> QueryResponse:
         q_lower = req.question.lower()
         _c_date_from = params.pop("_correlation_date_from", None)
         _c_base = {"date_from": _c_date_from} if _c_date_from else {}
-        if any(kw in q_lower for kw in ("turnover", "value traded", "value_traded")):
+        # GCC co-movement check first — most specific signal
+        _gcc_kws = ("gcc", "gulf", "peer market", "peer markets", "regional market",
+                    "saudi", "tasi", "adx", "dfm", "kse", "tadawul",
+                    "move together", "co-move", "in sync", "track")
+        if any(kw in q_lower for kw in _gcc_kws):
+            # QSE return vs GCC average return — gcc_correlations_60d also included automatically
+            params = {**params, "correlation": {**_c_base, "metric_a": "return_1d", "metric_b": "gcc_avg_return_1d"}}
+        elif any(kw in q_lower for kw in ("turnover", "value traded", "value_traded")):
             params = {**params, "correlation": {**_c_base, "metric_a": "foreign_net", "metric_b": "value_traded"}}
         elif any(kw in q_lower for kw in ("volume",)):
             params = {**params, "correlation": {**_c_base, "metric_a": "foreign_net", "metric_b": "volume"}}
