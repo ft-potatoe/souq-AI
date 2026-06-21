@@ -16,6 +16,14 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 BUCKET_KEYWORDS: dict[str, list[str]] = {
+    "summary": [
+        "all time", "all-time", "record", "highest ever", "lowest ever",
+        "best day", "worst day", "biggest gain", "biggest loss", "biggest drop",
+        "52 week", "52-week", "year high", "year low", "ytd", "year to date",
+        "winning streak", "losing streak", "highest close", "lowest close",
+        "highest volume", "peak volume", "average daily return",
+        "how many up days", "how many down days",
+    ],
     "anomaly": [
         "anomal", "unusual", "outlier", "spike", "abnormal", "strange",
         "weird", "extreme", "flagged", "alert",
@@ -24,35 +32,104 @@ BUCKET_KEYWORDS: dict[str, list[str]] = {
         "regime", "bull", "bear", "sideways", "market state", "trend state",
         "market phase", "hmm",
     ],
+    "volatility_regime": [
+        "volatil", "vol regime", "low vol", "high vol", "low volatility", "high volatility",
+        "vix", "risk environment", "options", "implied vol", "realized vol",
+        "vol spike", "vol elevated", "vol compressed", "vol percentile",
+        "annualised vol", "annualized vol", "market risk", "vol regime",
+    ],
     "flows": [
         "flow", "foreign", "domestic", "buying", "buy volume", "buy pressure",
         "foreign buy", "domestic buy", "selling", "sold", "pressure",
         "inflow", "outflow", "investor", "sell volume", "sell pressure",
+        "turnover", "participation",
     ],
     "distribution": [
         "distribution", "percentile", "histogram", "percentile rank",
         "z-score", "zscore", "return range", "historical range", "return spread",
         "skew", "kurtosis", "how high", "how low", "relative to",
+        # extremes (dataset-wide min/max with date) — see distribution._extremes()
+        "biggest", "largest", "highest", "lowest", "smallest",
+        "worst day", "best day", "biggest drop", "biggest gain",
+        "single-day drop", "single day drop", "all-time", "record",
+        "most ever", "ever recorded",
+        # core metric words + generic "vs history" phrasing so a plain
+        # "how does X compare to history" lands on the distribution bucket
+        "volume", "turnover", "value traded", "trades",
+        "compare to history", "compared to history", "vs history",
+        "versus history", "compare to average", "above average",
+        "below average", "unusual", "typical", "normal for",
+        # counts and threshold queries ("how many days fell >2%?")
+        "how many days", "how many sessions", "how many times",
+        "fell more than", "dropped more than", "rose more than",
+        "gained more than", "exceeded", "surpassed", "threshold",
+        "fell over", "gained over", "days that", "sessions that",
     ],
     "trend": [
-        "trend", "momentum", "sma", "moving average", "slope", "direction",
-        "above", "below", "macd", "rsi", "bollinger", "atr",
+        "price trend", "market trend", "index trend", "momentum", "sma",
+        "moving average", "slope", "macd", "rsi", "bollinger", "atr",
+        "above sma", "below sma", "technical", "overbought", "oversold",
     ],
     "similarity": [
         "similar", "like this before", "historical analog", "analog",
         "comparable", "past session", "resemble", "historical match", "has this happened",
+        # natural analogical phrasing
+        "happened before", "seen this before", "occurred before",
+        "like today", "like the latest", "like this day", "a day like",
+        "day like this", "before like", "ever happened", "happen before",
+        "like it before", "seen before", "closest match", "nearest match",
+        "closest session", "most similar",
     ],
     "gcc": [
+        # NOTE: "compare to" removed — it false-fired on generic comparisons
+        # like "compare to history/average". GCC peer comparisons are covered by
+        # the specific peer/market keywords plus "vs"/"versus" below.
         "gcc", "gulf", "regional", "peer market", "peer comparison", "gcc peer",
         "peer performance", "saudi", "tasi", "adx", "dfm",
-        "kse", "msm", "bse", "tadawul", "compare to", "vs", "versus",
+        "kse", "msm", "bse", "tadawul", "vs", "versus",
     ],
     "correlation": [
         "correlat", "relationship", "linked", "co-move", "move together", "rolling corr",
+        "map pattern", "pattern between", "relationship between", "link between",
+        "connection between", "interact", "drives", "driven by", "tied to",
+        "relate to", "related to", "association", "in sync", "tracks", "track",
+        "in tandem", "same direction", "synchronis", "synchroniz", "move in",
     ],
     "seasonality": [
-        "season", "day of week", "monday effect", "weekly pattern",
+        "season", "day of week", "days of the week", "day of the week",
+        "monday effect", "weekly pattern", "weekly seasonal", "by day",
         "monthly", "ramadan", "time of year", "calendar",
+        # "pattern" only when combined with time/calendar context
+        "weekly", "day-of-week", "which day", "what day",
+    ],
+    # Day-type / market-state discovery (HDBSCAN). Keywords kept specific so they
+    # do not collide with "regime" (HMM trend states) or generic "pattern" usage.
+    "clustering": [
+        "day type", "type of day", "kind of day", "what kind of day",
+        "market state", "session cluster", "cluster", "recurring pattern",
+        "regime-like", "group of days", "similar market conditions",
+        "market conditions like",
+    ],
+    # Automated relationship discovery (Spearman scan + conditional decile). Distinct
+    # from "correlation" (two USER-NAMED features); these phrasings ask the system to
+    # FIND the relationships. Avoid generic "relationship"/"association" (owned by
+    # correlation) to prevent both firing on every co-movement question.
+    "relationships": [
+        "when x goes", "tends to", "usually when", "what drives",
+        "what moves with", "discover relationship", "hidden relationship",
+        "scan relationships", "which features", "what's associated",
+        "what is associated", "inverse relationship", "what affects",
+        "what tends to happen",
+        # broad scan phrasing — user asking for all pairs, not a named pair
+        "strongest relationship", "strongest statistical", "statistical relationship",
+        "all relationships", "relationships in the", "key relationships",
+        "main relationships", "top relationships", "what are the relationships",
+        "what relationships", "any relationships", "notable relationships",
+        # conditional / "when A then B" flow relationship phrasings
+        "higher when", "lower when", "more when", "less when",
+        "offset", "counterpart", "offset by", "counterbalance",
+        "step in when", "pick up when", "fill the gap",
+        "when foreign", "when domestic",
     ],
 }
 
@@ -60,6 +137,10 @@ BUCKET_KEYWORDS: dict[str, list[str]] = {
 BUCKET_PRIORITY: list[str] = [
     "anomaly",
     "regime",
+    "volatility_regime",
+    "clustering",
+    "summary",
+    "relationships",
     "flows",
     "distribution",
     "trend",
@@ -91,10 +172,10 @@ def compress_bucket(bucket: str, result: dict[str, Any], token_limit: int) -> di
     """
     if bucket == "similarity":
         compressed = copy.deepcopy(result)
-        if "matches" in compressed:
-            compressed["matches"] = [
+        if "top_matches" in compressed:
+            compressed["top_matches"] = [
                 {k: v for k, v in m.items() if k != "forward_return_stats"}
-                for m in compressed["matches"][:3]
+                for m in compressed["top_matches"][:3]
             ]
         if estimate_tokens(compressed) <= token_limit:
             return compressed
@@ -123,6 +204,53 @@ def compress_bucket(bucket: str, result: dict[str, Any], token_limit: int) -> di
             for k in ("rolling_corr_20d", "percentile_of_current_corr")
             if k in result
         }
+        if estimate_tokens(compressed) <= token_limit:
+            return compressed
+        return None
+
+    if bucket == "summary":
+        # Drop per-metric records for volume/return cols; keep price records + extremes
+        compressed = copy.deepcopy(result)
+        keep_metrics = ["close", "volume", "value_traded"]
+        if "records" in compressed:
+            compressed["records"] = {
+                k: v for k, v in compressed["records"].items() if k in keep_metrics
+            }
+        if estimate_tokens(compressed) <= token_limit:
+            return compressed
+        # Further compress: drop 52_week and ytd, keep all_time only
+        if "records" in compressed:
+            for m in compressed["records"]:
+                compressed["records"][m] = {"all_time": compressed["records"][m].get("all_time")}
+        compressed.pop("avg_daily_return_52w", None)
+        compressed.pop("avg_daily_return_ytd", None)
+        compressed.pop("up_days_ytd", None)
+        compressed.pop("down_days_ytd", None)
+        if estimate_tokens(compressed) <= token_limit:
+            return compressed
+        return None
+
+    if bucket == "relationships":
+        # Keep the headline relationships + conditional + note; drop the long
+        # strongest_relationships list first, then trim primary to 3 if needed.
+        compressed = copy.deepcopy(result)
+        compressed.pop("strongest_relationships", None)
+        if estimate_tokens(compressed) <= token_limit:
+            return compressed
+        if "primary_relationships" in compressed:
+            compressed["primary_relationships"] = compressed["primary_relationships"][:3]
+        if estimate_tokens(compressed) <= token_limit:
+            return compressed
+        return None
+
+    if bucket == "clustering":
+        # Drop member-date samples and keep current cluster + the 3 largest clusters.
+        compressed = copy.deepcopy(result)
+        compressed.pop("member_dates_sample", None)
+        if "all_clusters" in compressed:
+            compressed["all_clusters"] = sorted(
+                compressed["all_clusters"], key=lambda c: c.get("size", 0), reverse=True
+            )[:3]
         if estimate_tokens(compressed) <= token_limit:
             return compressed
         return None
@@ -177,7 +305,7 @@ def build_llm_payload(
 # Question -> bucket matching
 # ---------------------------------------------------------------------------
 
-_DEFAULT_BUCKETS: list[str] = ["trend", "distribution", "regime"]
+_DEFAULT_BUCKETS: list[str] = ["trend", "distribution", "regime", "volatility_regime"]
 
 
 def match_buckets(question: str) -> list[str]:

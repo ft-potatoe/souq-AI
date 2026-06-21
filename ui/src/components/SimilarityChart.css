@@ -1,0 +1,68 @@
+.sim-chart-wrap {
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: var(--navy-dark);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.sim-chart-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 10px;
+}
+
+.sim-chart-tooltip {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  font-size: 12px;
+  min-width: 130px;
+}
+
+.sct-date {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.sct-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-muted);
+}
+
+.sct-val {
+  font-weight: 600;
+}
+
+.sim-chart-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.scl-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.scl-label {
+  margin-right: 6px;
+}
+
+.scl-note {
+  font-style: italic;
+  color: var(--text-dim);
+  opacity: 0.7;
+}

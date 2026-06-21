@@ -28,7 +28,9 @@ _MONTH_NAMES = {
 
 SUPPORTED_METRICS = {
     "volume", "value_traded", "total_trades", "return_1d",
-    "foreign_net", "domestic_net", "breadth_ratio", "foreign_participation",
+    "foreign_net", "foreign_buy", "foreign_sell",
+    "domestic_net", "domestic_buy", "domestic_sell",
+    "breadth_ratio", "foreign_participation",
     "volatility_20d",
 }
 
@@ -108,7 +110,10 @@ def _ordinal(n: int) -> str:
 def run(date: str, params: dict[str, Any]) -> dict:
     """
     params:
-        metric (str): one of SUPPORTED_METRICS (default "volume")
+        metric   (str): one of SUPPORTED_METRICS (default "volume")
+        date_from (str): optional ISO date; when supplied the day-of-week and
+                         monthly profiles are computed over that sub-period only.
+                         Useful for "by day of week in 2026" style questions.
     """
     metric: str = params.get("metric", "volume")
     if metric not in SUPPORTED_METRICS:
@@ -119,6 +124,10 @@ def run(date: str, params: dict[str, Any]) -> dict:
     hist = history_up_to(date)
     if hist.empty:
         raise ValueError(f"No history available up to {date}")
+
+    date_from: str | None = params.get("date_from")
+    if date_from:
+        hist = hist[hist["date"] >= pd.Timestamp(date_from)]
 
     row = row_for_date(date)
 

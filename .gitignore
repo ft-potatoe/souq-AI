@@ -10,3 +10,6 @@ __pycache__/
 venv/
 node_modules/
 ui/dist/
+.firecrawl/
+.pytest_cache/
+notebooks/

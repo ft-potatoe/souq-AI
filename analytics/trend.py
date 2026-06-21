@@ -118,6 +118,27 @@ def sma_crossover(
 
 
 # ---------------------------------------------------------------------------
+# Feature-row helpers
+# ---------------------------------------------------------------------------
+
+def _safe_float(val: Any) -> float | None:
+    try:
+        v = float(val)
+        return None if math.isnan(v) else round(v, 4)
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_bool(val: Any) -> bool | None:
+    if val is None:
+        return None
+    try:
+        return bool(int(val))
+    except (TypeError, ValueError):
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
 
@@ -130,6 +151,10 @@ def run(date: str, params: dict[str, Any]) -> dict:
         momentum_windows (list[int], optional)
         fast_sma_col (str, optional): features column for fast SMA
         slow_sma_col (str, optional): features column for slow SMA
+        date_from (str, optional): ISO date — restrict history to on/after this date
+
+    Always includes rsi_14, above_sma_20, above_sma_200, price_vs_sma20_pct from
+    the feature row so the LLM can answer "is QSE above its SMA? what is the RSI?"
     """
     metric: str = params.get("metric", "foreign_net")
     slope_window: int = int(params.get("slope_window", 10))
@@ -137,10 +162,16 @@ def run(date: str, params: dict[str, Any]) -> dict:
     momentum_windows: list[int] = params.get("momentum_windows", _MOMENTUM_WINDOWS)
     fast_col: str | None = params.get("fast_sma_col")
     slow_col: str | None = params.get("slow_sma_col")
+    date_from: str | None = params.get("date_from")
 
     hist = history_up_to(date)
     if hist.empty:
         raise ValueError(f"No history available up to {date}")
+
+    if date_from:
+        hist = hist[hist["date"] >= pd.Timestamp(date_from)].reset_index(drop=True)
+        if hist.empty:
+            raise ValueError(f"No history in range {date_from} to {date}")
 
     series = hist[metric].reset_index(drop=True)
 
@@ -190,6 +221,20 @@ def run(date: str, params: dict[str, Any]) -> dict:
                 last_pos = cross_positions[-1]
                 crossover_date = str(hist["date"].iloc[last_pos].date())
 
+    # Pull RSI and SMA position directly from the feature row for the queried date.
+    # row_for_date() reads the full features_master row; these fields are always
+    # present after build_features.py runs (58-column output).
+    row = row_for_date(date)
+    _rsi14 = None
+    _above_sma20 = None
+    _above_sma200 = None
+    _price_vs_sma20_pct = None
+    if row is not None:
+        _rsi14 = _safe_float(row.get("rsi_14"))
+        _above_sma20 = _safe_bool(row.get("above_sma_20"))
+        _above_sma200 = _safe_bool(row.get("above_sma_200"))
+        _price_vs_sma20_pct = _safe_float(row.get("price_vs_sma20_pct"))
+
     out: dict[str, Any] = {
         "metric": metric,
         f"slope_{slope_window}d": round(slope_val, 4) if not math.isnan(slope_val) else None,
@@ -198,5 +243,12 @@ def run(date: str, params: dict[str, Any]) -> dict:
         "momentum": {k.replace("d", ""): v for k, v in mom.items()},
         "sma_crossover": crossover_event,
         "crossover_date": crossover_date,
+        "rsi_14": _rsi14,
+        "above_sma_20": _above_sma20,
+        "above_sma_200": _above_sma200,
+        "price_vs_sma20_pct": _price_vs_sma20_pct,
     }
+    if date_from:
+        out["period_date_from"] = date_from
+        out["period_sessions"] = len(hist)
     return out

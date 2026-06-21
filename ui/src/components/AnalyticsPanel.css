@@ -1,13 +1,13 @@
 .analytics-panel {
   margin-top: 10px;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 
 .analytics-toggle {
   width: 100%;
-  background: var(--surface);
+  background: var(--bg-surface);
   border: none;
   padding: 8px 14px;
   text-align: left;
@@ -21,22 +21,167 @@
 }
 
 .analytics-toggle:hover {
-  background: var(--surface-2);
+  background: var(--bg-surface-2);
 }
 
 .analytics-chevron {
   font-size: 11px;
+  flex-shrink: 0;
+}
+
+.analytics-buckets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-left: 4px;
+}
+
+.ap-bucket-chip {
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border-sub);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .analytics-body {
-  background: var(--navy-dark);
+  background: var(--bg-sidebar);
   padding: 12px 14px;
-  font-family: 'IBM Plex Mono', 'Consolas', monospace;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* ── Sections ── */
+.ap-section {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-sub);
+}
+
+.ap-section:last-child {
+  border-bottom: none;
+}
+
+.ap-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+}
+
+/* ── Stat grid ── */
+.ap-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 4px 16px;
+}
+
+.ap-stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: 4px;
   font-size: 12px;
+}
+
+.ap-stat-row--hl {
+  background: rgba(201, 168, 76, 0.06);
+}
+
+.ap-stat-label {
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.ap-stat-value {
+  color: var(--text);
+  font-weight: 500;
+  text-align: right;
+}
+
+/* ── GCC peers ── */
+.ap-gcc-peers {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.ap-gcc-peer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.ap-gcc-name {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.ap-gcc-ret {
+  font-weight: 600;
+  font-size: 12px;
+}
+
+/* ── Summary metric ── */
+.ap-summary-metric {
+  margin-top: 8px;
+}
+
+.ap-summary-metric-name {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: capitalize;
+  margin-bottom: 4px;
+}
+
+/* ── Chart wrap ── */
+.ap-chart-wrap {
+  margin-top: 10px;
+}
+
+/* ── Raw JSON toggle ── */
+.ap-raw-toggle {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 8px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-sans);
+}
+
+.ap-raw-toggle:hover {
+  color: var(--text-muted);
+}
+
+.ap-raw-fallback,
+.ap-raw-body {
+  background: var(--bg-surface);
+  font-family: var(--font-mono);
+  font-size: 11px;
   overflow-x: auto;
-  max-height: 300px;
+  max-height: 240px;
   overflow-y: auto;
   line-height: 1.7;
+  margin-top: 6px;
+  padding: 6px 0;
 }
 
 .json-toggle {
@@ -45,24 +190,18 @@
   padding: 0;
   font-family: inherit;
   font-size: inherit;
-  color: var(--gold);
+  color: var(--qse-blue);
   cursor: pointer;
   text-decoration: underline dotted;
 }
 
-.json-row {
-  display: block;
-}
-
-.json-children {
-  display: block;
-}
-
-.json-key { color: #79b8ff; }
-.json-str { color: #85e89d; }
-.json-num { color: #f0a500; }
-.json-bool { color: var(--maroon-light); }
+.json-row { display: block; }
+.json-children { display: block; }
+.json-key  { color: #79b8ff; }
+.json-str  { color: #85e89d; }
+.json-num  { color: #f0a500; }
+.json-bool { color: var(--qse-maroon); }
 .json-null { color: var(--text-dim); }
-.json-colon { color: var(--text-muted); }
-.json-comma { color: var(--text-dim); }
+.json-colon  { color: var(--text-muted); }
+.json-comma  { color: var(--text-dim); }
 .json-bracket { color: var(--text-muted); }

@@ -69,12 +69,25 @@ def _last_retrain_ts() -> Optional[datetime]:
     return ts
 
 
+def _to_iso_date(value: Optional[date | str]) -> Optional[str]:
+    """Normalise a date-like value to an ISO date string, or None.
+
+    Accepts a date/datetime (internal callers) or an ISO string (the API layer,
+    since JSON carries dates as strings). Empty strings become None.
+    """
+    if value is None or value == "":
+        return None
+    if isinstance(value, str):
+        return value
+    return value.isoformat()
+
+
 def store(
     feedback_type: str,
-    query_date: Optional[date] = None,
+    query_date: Optional[date | str] = None,
     question: Optional[str] = None,
     user_id: Optional[str] = None,
-    target_date: Optional[date] = None,
+    target_date: Optional[date | str] = None,
     rating: Optional[int] = None,
     correction_text: Optional[str] = None,
     model_versions: Optional[dict] = None,
@@ -89,6 +102,12 @@ def store(
     mv_json = json.dumps(model_versions) if model_versions is not None else None
     ts = datetime.now(UTC).replace(tzinfo=None).isoformat(timespec="seconds")
 
+    # query_date / target_date may arrive as date objects (internal callers) or
+    # as ISO strings (the API layer — JSON has no date type). Normalise to a
+    # stored ISO string either way.
+    query_date_iso = _to_iso_date(query_date)
+    target_date_iso = _to_iso_date(target_date)
+
     with _connect() as conn:
         cur = conn.execute(
             """
@@ -101,10 +120,10 @@ def store(
             (
                 ts,
                 user_id,
-                query_date.isoformat() if query_date else None,
+                query_date_iso,
                 question,
                 feedback_type,
-                target_date.isoformat() if target_date else None,
+                target_date_iso,
                 rating,
                 correction_text,
                 mv_json,

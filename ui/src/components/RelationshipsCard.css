@@ -1,0 +1,94 @@
+.relationships-card {
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #e2e2e2);
+  border-radius: var(--radius, 8px);
+  padding: 12px 14px;
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rel-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text, #1a1a1a);
+}
+
+.rel-disclaimer {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-dim, #888);
+}
+
+.rel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.rel-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rel-pair {
+  font-size: 12px;
+  color: var(--text, #1a1a1a);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.rel-dir {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  border-radius: 4px;
+  padding: 1px 6px;
+  color: #fff;
+}
+
+.rel-dir--direct {
+  background: var(--green, #27ae60);
+}
+
+.rel-dir--inverse {
+  background: var(--purple, #9b59b6);
+}
+
+.rel-strength {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted, #666);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.rel-conditional {
+  font-size: 12px;
+  color: var(--text, #1a1a1a);
+  background: rgba(155, 89, 182, 0.07);
+  border-left: 3px solid var(--purple, #9b59b6);
+  border-radius: 4px;
+  padding: 7px 10px;
+  line-height: 1.4;
+}
+
+.rel-note {
+  font-size: 11px;
+  font-style: italic;
+  color: var(--text-muted, #666);
+}

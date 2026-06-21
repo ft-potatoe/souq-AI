@@ -97,15 +97,49 @@ def _last_comparable_date(
     return str(dt.date())
 
 
+def _extremes(hist: pd.DataFrame, metric: str) -> dict:
+    """
+    Dataset-wide min and max of *metric* over the supplied history, each paired
+    with the date it occurred on. Answers "biggest drop / highest volume / worst
+    day" style questions without the LLM ever computing the extremum itself.
+    """
+    valid = hist[[metric, "date"]].dropna(subset=[metric])
+    if valid.empty:
+        return {
+            "min_value": None, "min_date": None,
+            "max_value": None, "max_date": None,
+        }
+    min_row = valid.loc[valid[metric].idxmin()]
+    max_row = valid.loc[valid[metric].idxmax()]
+    return {
+        "min_value": round(float(min_row[metric]), 6),
+        "min_date": str(min_row["date"].date()),
+        "max_value": round(float(max_row[metric]), 6),
+        "max_date": str(max_row["date"].date()),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
+
+def _count_threshold(series: pd.Series, threshold: float, direction: str) -> int:
+    """Count sessions where *series* meets the threshold condition."""
+    valid = series.dropna()
+    if direction == "above":
+        return int((valid >= threshold).sum())
+    return int((valid <= threshold).sum())
+
 
 def run(date: str, params: dict[str, Any]) -> dict:
     """
     params:
         metric (str): one of SUPPORTED_METRICS
         direction (str, optional): "above" | "below" for historical_frequency
+        date_from (str, optional): ISO date — restrict history to on/after this date
+        date_to (str, optional): ISO date — restrict history to on/before this date
+        threshold (float, optional): value to count sessions against
+        threshold_direction (str, optional): "above" | "below" (default "below")
     """
     metric: str = params.get("metric", "volume")
     if metric not in SUPPORTED_METRICS:
@@ -113,10 +147,35 @@ def run(date: str, params: dict[str, Any]) -> dict:
             f"Unsupported metric '{metric}'. Choose from: {sorted(SUPPORTED_METRICS)}"
         )
     direction: str = params.get("direction", "above")
+    date_from: str | None = params.get("date_from")
+    date_to: str | None = params.get("date_to")
+    threshold = params.get("threshold")
+    threshold_direction: str = params.get("threshold_direction", "below")
 
     hist = history_up_to(date)
     if hist.empty:
         raise ValueError(f"No history available up to {date}")
+
+    # Slice to requested date range before all downstream computations
+    date_range_block: dict | None = None
+    if date_from or date_to:
+        mask = pd.Series(True, index=hist.index)
+        if date_from:
+            mask &= hist["date"] >= pd.Timestamp(date_from)
+        if date_to:
+            mask &= hist["date"] <= pd.Timestamp(date_to)
+        hist = hist[mask].reset_index(drop=True)
+        if hist.empty:
+            raise ValueError(
+                f"No sessions in range {date_from or 'start'} – {date_to or date}"
+            )
+        actual_from = str(hist["date"].iloc[0].date())
+        actual_to = str(hist["date"].iloc[-1].date())
+        date_range_block = {
+            "date_from": actual_from,
+            "date_to": actual_to,
+            "sessions_in_range": len(hist),
+        }
 
     row = row_for_date(date)
     today_value = row[metric]
@@ -134,7 +193,15 @@ def run(date: str, params: dict[str, Any]) -> dict:
     else:
         sessions_extreme = int((valid <= today_value).sum())
 
-    return {
+    skewness = round(float(valid.skew()), 4) if len(valid) >= 3 else None
+    kurtosis = round(float(valid.kurt()), 4) if len(valid) >= 4 else None
+    pct25 = round(float(valid.quantile(0.25)), 6) if not valid.empty else None
+    pct50 = round(float(valid.quantile(0.50)), 6) if not valid.empty else None
+    pct75 = round(float(valid.quantile(0.75)), 6) if not valid.empty else None
+
+    extremes = _extremes(hist, metric)
+
+    result: dict = {
         "metric": metric,
         "today_value": (
             None if (isinstance(today_value, float) and math.isnan(today_value))
@@ -146,4 +213,18 @@ def run(date: str, params: dict[str, Any]) -> dict:
         "last_comparable_date": last_comparable,
         "sessions_above_today" if direction == "above" else "sessions_below_today": sessions_extreme,
         "total_sessions": len(valid),
+        "skewness": skewness,
+        "kurtosis": kurtosis,
+        "percentiles": {"p25": pct25, "p50": pct50, "p75": pct75},
+        "extremes": extremes,
     }
+
+    if date_range_block is not None:
+        result["date_range"] = date_range_block
+
+    if threshold is not None:
+        result["threshold"] = threshold
+        result["threshold_direction"] = threshold_direction
+        result["threshold_count"] = _count_threshold(valid, float(threshold), threshold_direction)
+
+    return result

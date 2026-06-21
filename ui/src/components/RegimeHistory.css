@@ -1,0 +1,172 @@
+.regime-history {
+  background: var(--bg-sidebar);
+}
+
+.rh-toggle {
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 8px 20px;
+  text-align: left;
+  color: var(--text-muted);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.rh-toggle:hover {
+  background: var(--bg-surface);
+}
+
+.rh-chevron {
+  font-size: 11px;
+}
+
+.rh-body {
+  padding: 8px 20px 14px;
+}
+
+.rh-error,
+.rh-loading,
+.rh-empty {
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 6px 0;
+}
+
+/* ── Timeline wrap (label + bar) ── */
+.rh-timeline-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.rh-timeline-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  width: 28px;
+  flex-shrink: 0;
+}
+
+/* ── Timeline bar ── */
+.rh-timeline {
+  display: flex;
+  flex: 1;
+  height: 18px;
+  border-radius: 4px;
+  overflow: hidden;
+  gap: 1px;
+}
+
+.rh-seg {
+  border-top: 2px solid;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  transition: opacity 0.15s;
+  cursor: default;
+  min-width: 2px;
+}
+
+.rh-seg:hover {
+  opacity: 0.85;
+}
+
+.rh-seg-label {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* ── Sections ── */
+.rh-timeline-wrap + .rh-transitions,
+.rh-timeline-wrap + .rh-segments {
+  margin-top: 8px;
+}
+
+.rh-section-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+
+/* ── Transition rows ── */
+.rh-transitions,
+.rh-segments {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rh-transition-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.rh-trans-date {
+  color: var(--text-dim);
+  min-width: 88px;
+}
+
+.rh-trans-from,
+.rh-trans-to {
+  font-weight: 600;
+  min-width: 60px;
+}
+
+.rh-trans-arrow {
+  color: var(--text-dim);
+}
+
+/* ── Segment rows ── */
+.rh-segment-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.rh-seg-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.rh-seg-label-sm {
+  font-weight: 600;
+  width: 60px;
+}
+
+.rh-seg-vol {
+  font-size: 10px;
+  font-weight: 600;
+  width: 52px;
+  opacity: 0.85;
+}
+
+.rh-seg-dates {
+  color: var(--text-muted);
+  flex: 1;
+}
+
+.rh-seg-count {
+  color: var(--text-dim);
+  font-size: 11px;
+}
