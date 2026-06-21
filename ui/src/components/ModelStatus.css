@@ -1,45 +1,65 @@
 .model-status {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
-  padding: 7px 20px;
-  flex-wrap: wrap;
+  padding: 6px 20px;
   font-size: 11px;
   color: var(--text-dim);
   overflow-x: auto;
+  flex-wrap: wrap;
 }
 
-.ms-model {
+.ms-left, .ms-right {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Model chips */
+.ms-model-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--bg-chip);
+  border: 1px solid var(--border-sub);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 10.5px;
 }
 
 .ms-name {
   color: var(--text-muted);
   font-weight: 500;
+  text-transform: capitalize;
 }
 
 .ms-version {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.ms-deployed {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+/* Feedback chips */
+.ms-feedback-chip {
+  background: var(--bg-chip);
+  border: 1px solid var(--border-sub);
   border-radius: 4px;
-  padding: 1px 5px;
-  color: var(--text-dim);
-}
-
-.ms-sep {
-  width: 1px;
-  height: 12px;
-  background: var(--border);
-  display: inline-block;
-  flex-shrink: 0;
-}
-
-.ms-feedback {
-  color: var(--text-dim);
+  padding: 1px 8px;
+  font-size: 10.5px;
+  color: var(--text-muted);
 }
 
 .ms-retrain {
+  font-family: var(--font-mono);
+  font-size: 10px;
   color: var(--text-dim);
+  white-space: nowrap;
 }

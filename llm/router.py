@@ -73,6 +73,12 @@ BUCKET_KEYWORDS: dict[str, list[str]] = {
     "similarity": [
         "similar", "like this before", "historical analog", "analog",
         "comparable", "past session", "resemble", "historical match", "has this happened",
+        # natural analogical phrasing
+        "happened before", "seen this before", "occurred before",
+        "like today", "like the latest", "like this day", "a day like",
+        "day like this", "before like", "ever happened", "happen before",
+        "like it before", "seen before", "closest match", "nearest match",
+        "closest session", "most similar",
     ],
     "gcc": [
         # NOTE: "compare to" removed — it false-fired on generic comparisons
@@ -123,13 +129,13 @@ BUCKET_PRIORITY: list[str] = [
     "volatility_regime",
     "clustering",
     "summary",
+    "relationships",
     "flows",
     "distribution",
     "trend",
     "similarity",
     "gcc",
     "correlation",
-    "relationships",
     "seasonality",
 ]
 

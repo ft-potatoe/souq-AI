@@ -1,7 +1,7 @@
 .similarity-card {
-  background: var(--surface);
+  background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   padding: 10px 14px;
   display: flex;
   flex-direction: column;
@@ -13,7 +13,7 @@
 }
 
 .similarity-card:hover {
-  border-color: var(--navy-light);
+  border-color: var(--qse-blue);
 }
 
 .sim-header {
@@ -58,14 +58,14 @@
 .sim-score-track {
   flex: 1;
   height: 4px;
-  background: var(--surface-2);
+  background: var(--bg-surface-2);
   border-radius: 2px;
   overflow: hidden;
 }
 
 .sim-score-fill {
   height: 100%;
-  background: var(--gold);
+  background: var(--qse-blue);
   border-radius: 2px;
   transition: width 0.4s ease;
 }
@@ -100,7 +100,7 @@
 .sim-return-bar-wrap {
   flex: 1;
   height: 4px;
-  background: var(--surface-2);
+  background: var(--bg-surface-2);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -135,7 +135,7 @@
   align-items: center;
   gap: 8px;
   padding-top: 4px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--border-sub);
 }
 
 .star-rating {
@@ -154,13 +154,9 @@
   transition: color 0.1s;
 }
 
-.star:disabled {
-  cursor: default;
-}
+.star:disabled { cursor: default; }
 
-.star--on {
-  color: var(--gold);
-}
+.star--on { color: var(--amber); }
 
 .sim-rated {
   font-size: 11px;

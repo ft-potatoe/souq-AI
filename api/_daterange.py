@@ -307,6 +307,45 @@ def _parse_between_months(q: str, data_date: date) -> tuple[str, str] | None:
 # Public entry point
 # ---------------------------------------------------------------------------
 
+def extract_single_date(question: str) -> str | None:
+    """
+    Extract a specific single target date from a question such as
+    "on 3 June 2026", "on June 3rd 2026", "on 2026-06-03".
+    Returns an ISO date string (YYYY-MM-DD) or None if no single date found.
+    Only fires when the question clearly names ONE date (not a range).
+    """
+    q = question.strip()
+
+    # ISO: 2026-06-03
+    m = re.search(r"\bon\s+(\d{4}-\d{2}-\d{2})\b", q, re.IGNORECASE)
+    if m:
+        return m.group(1)
+
+    # "on D Month YYYY" / "on Dth of Month YYYY"
+    m = re.search(
+        rf"\bon\s+{_DAY}(?:\s+of)?\s+{_MONTH}\s+{_YEAR}",
+        q, re.IGNORECASE,
+    )
+    if m:
+        d, mo, y = m.groups()
+        mk = _m(mo)
+        if mk:
+            return _iso(y, mk, d)
+
+    # "on Month D YYYY" / "on Month Dth, YYYY"
+    m = re.search(
+        rf"\bon\s+{_MONTH}\s+{_DAY}(?:,?\s*{_YEAR})?",
+        q, re.IGNORECASE,
+    )
+    if m:
+        mo, d, y = m.groups()
+        mk = _m(mo)
+        if mk and y:
+            return _iso(y, mk, d)
+
+    return None
+
+
 def extract_date_range(question: str, data_date: date) -> tuple[str | None, str | None]:
     """
     Try all patterns in priority order.

@@ -71,11 +71,11 @@ _EXCLUDE_COLS = {
     "unchanged",
     "total_listed",
     "total_traded",
+    # domestic_net kept out — ~mirror of foreign_net (daily flows net to ~0)
     "domestic_net",
+    # domestic_buy/sell kept out — subsumed by domestic_net for scan purposes
     "domestic_buy",
     "domestic_sell",
-    "foreign_buy",
-    "foreign_sell",
     "domestic_flow_zscore",
     "foreign_net_cumulative_5d",
     "foreign_net_cumulative_20d",
@@ -83,6 +83,9 @@ _EXCLUDE_COLS = {
     "trades_zscore",
     "value_traded",
     "total_trades",
+    # foreign_buy and foreign_sell are NOT excluded — they carry asymmetric
+    # gross-flow information that foreign_net alone cannot represent
+    # (heavy sell + low buy differs from balanced two-way flow with same net).
 }
 
 _NOTE = "Associations only -- co-movement, not causation."
@@ -191,39 +194,46 @@ def conditional_decile(
     given: str,
     observed: str,
     decile: float = _DECILE,
+    direction: str = "bottom",
 ) -> dict[str, Any] | None:
     """
-    On days where *given* is in its bottom decile, how often is *observed*
-    above its all-history median? Compared against the 50% baseline.
+    On days where *given* is in its bottom (or top) decile, how often is
+    *observed* above its all-history median? Compared against the 50% baseline.
+
+    direction: "bottom" (default) | "top"
     """
     paired = df[[given, observed]].dropna()
     if len(paired) < _MIN_OVERLAP:
         return None
 
-    # Rank-based bottom decile: take the lowest ~10% of days by *given*. Using the
-    # rank (rather than a value threshold with <=) avoids pulling in a large block
-    # of tied values, which would inflate the sample and distort the frequency.
-    n_low = max(1, int(round(len(paired) * decile)))
-    low_days = paired.nsmallest(n_low, given)
-    obs_median = paired[observed].median()
-
-    n = len(low_days)
     # If the observed column is essentially constant, the comparison is meaningless.
     if paired[observed].nunique() < 2:
         return None
 
-    above = int((low_days[observed] > obs_median).sum())
+    n_extreme = max(1, int(round(len(paired) * decile)))
+    if direction == "top":
+        extreme_days = paired.nlargest(n_extreme, given)
+        condition_label = f"top {int(decile * 100)}%"
+        direction_word = "highest"
+    else:
+        extreme_days = paired.nsmallest(n_extreme, given)
+        condition_label = f"bottom {int(decile * 100)}%"
+        direction_word = "lowest"
+
+    obs_median = paired[observed].median()
+    n = len(extreme_days)
+    above = int((extreme_days[observed] > obs_median).sum())
     result_pct = round(100.0 * above / n, 1)
 
     h_given, h_obs = _humanise(given), _humanise(observed)
     plain = (
-        f"On the {n} days when {h_given} was in its lowest "
+        f"On the {n} days when {h_given} was in its {direction_word} "
         f"{int(decile * 100)}%, {h_obs} was above its median "
         f"{result_pct}% of the time (vs 50% baseline)."
     )
     return {
         "given": given,
-        "condition": f"bottom {int(decile * 100)}%",
+        "condition": condition_label,
         "observed": observed,
         "result_pct": result_pct,
         "baseline_pct": 50.0,
@@ -278,8 +288,10 @@ def run(date: str, params: dict[str, Any]) -> dict:
         observed = observed or ranked[0]["feature_b"]
 
     conditional = None
+    conditional_high = None
     if given and observed and given in hist.columns and observed in hist.columns:
-        conditional = conditional_decile(hist, given, observed)
+        conditional = conditional_decile(hist, given, observed, direction="bottom")
+        conditional_high = conditional_decile(hist, given, observed, direction="top")
 
     out = {
         "date": str(pd.Timestamp(date).date()),
@@ -287,6 +299,7 @@ def run(date: str, params: dict[str, Any]) -> dict:
         "primary_relationships": primary,
         "strongest_relationships": strongest,
         "conditional": conditional,
+        "conditional_high": conditional_high,
         "note": _NOTE,
     }
     if date_from:

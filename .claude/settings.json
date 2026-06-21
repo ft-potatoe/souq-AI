@@ -49,7 +49,21 @@
       "Bash(./venv/Scripts/python.exe -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('response:', repr\\(d.get\\('response',''\\)\\)\\); print\\('eval_duration_ms:', round\\(d.get\\('eval_duration',0\\)/1e6\\)\\)\")",
       "Bash(./venv/Scripts/python.exe -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('response:', repr\\(d.get\\('response',''\\)\\)\\); print\\('eval_duration_ms:', round\\(d.get\\('eval_duration',0\\)/1e6\\)\\); print\\('prompt_eval_ms:', round\\(d.get\\('prompt_eval_duration',0\\)/1e6\\)\\)\")",
       "Bash(./venv/Scripts/python.exe -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('RAW:', repr\\(d.get\\('response',''\\)[:300]\\)\\)\")",
-      "Bash(./venv/Scripts/python.exe -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('RAW:', repr\\(d.get\\('response',''\\)[:500]\\)\\)\")"
+      "Bash(./venv/Scripts/python.exe -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('RAW:', repr\\(d.get\\('response',''\\)[:500]\\)\\)\")",
+      "Bash(curl -s http://localhost:8000/features/today)",
+      "PowerShell(netstat -ano)",
+      "PowerShell(Get-Process -Id 18528, 2764)",
+      "PowerShell(Stop-Process -Id 18528, 2764 -Force)",
+      "PowerShell(taskkill /F /PID 18528 /PID 2764 2>&1)",
+      "Bash(curl -s http://localhost:8000/openapi.json)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('\\\\n'.join\\(d['paths'].keys\\(\\)\\)\\)\")",
+      "PowerShell(Get-Process -Id 18528 -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Process -Id 2764 -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 8000 -State Listen | Select-Object LocalAddress, LocalPort, OwningProcess | ForEach-Object { $proc = Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue; [PSCustomObject]@{PID=$_.OwningProcess; Process=$proc.ProcessName; Path=$proc.Path} })",
+      "PowerShell(Get-Process -Id 18528 2>&1)",
+      "Bash(uvicorn api.main:app --port 8000 --log-level info)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 8000 -State Listen 2>&1)",
+      "PowerShell(wmic process where ProcessId=2764 get ProcessId,Name,CommandLine /format:list 2>&1)"
     ]
   }
 }

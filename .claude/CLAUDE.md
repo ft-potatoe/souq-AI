@@ -195,7 +195,7 @@ GET /anomaly/{date}, POST /feedback, GET /models/status, GET /health
 - [DONE] tests/test_features.py             — 66 tests (added TestForwardReturns, 7 tests)
 - [DONE] feedback/store.py                  — SQLite store at data/feedback/feedback.db; 34 tests in tests/test_feedback_store.py
 - [DONE] Full test suite: 379 tests, all passing (incl. test_relationships.py, test_clustering.py, test_ingest.py)
-- [DONE] llm/interface.py  — query_llm(prompt, system) -> str; httpx POST to Ollama localhost:11434; qwen3:8b; temp=0.1, top_p=0.9, num_predict=700, num_ctx=8192, timeout=600s, stream=False; _strip_thinking() removes <think> blocks
+- [DONE] llm/interface.py  — query_llm(prompt, system) -> str; Groq primary (llama-3.3-70b-versatile, GROQ_API_KEY env var) with Ollama fallback (qwen3:8b, localhost:11434); temp=0.1, top_p=0.9, num_predict/max_tokens=900, num_ctx=8192, timeout=60s, stream=False; _strip_thinking() removes <think> blocks
 - [DONE] llm/prompts.py    — SYSTEM_PROMPT (16 rules: +14 clustering, +15 associations-not-causation, +16 threshold_count/date_range); build_prompt(question, payload, history=None) -> str; multi-turn history injection
 - [DONE] llm/router.py     — BUCKET_KEYWORDS (12 buckets: +clustering, +relationships), BUCKET_PRIORITY, PAYLOAD_TOKEN_BUDGET=3500; match_buckets(); build_llm_payload(); compress_bucket(); estimate_tokens()
 - [DONE] api/ (main.py, endpoints/)               — all 10 spec endpoints; Pydantic models; CORS for localhost:5173
@@ -207,12 +207,22 @@ GET /anomaly/{date}, POST /feedback, GET /models/status, GET /health
 - [DONE] scripts/retrain/train_vol_hmm.py  — standalone vol HMM refitter; semantic flip-rate gate; atomic rollback on failure
 - [DONE] scripts/retrain/train_clustering.py — standalone HDBSCAN refitter; internal gate (silhouette>=0.20, noise<=0.40, n_clusters>=2); atomic restore on failure; no --force/threshold (always retrains)
 - [DONE] scripts/models/rollback.py        — updates _current symlink/ptr; logs rollback entry to retrain_log.jsonl
-- [DONE] ui/ React components              — ChatWindow (date-aware queries, date chip, detected-date sync,
-                                             markdown table rendering with grid lines),
-                                             RegimeBadge (trend + vol pills), RegimeHistory (dual timelines),
-                                             RegimeInline (vol pill in chat), AnomalyIndicator, SimilarityCard,
-                                             SimilarityChart, AnalyticsPanel, ClusteringCard, RelationshipsCard
-                                             ModelStatus date display uses en-GB locale (DD/MM/YYYY)
+- [DONE] ui/ React components              — Full design handoff (design_v2_dark_light spec) implemented 2026-06-21.
+                                             Dual-mode CSS token system ([data-theme="dark"|"light"]) in index.css;
+                                             QSE header: 60px, 2px --qse-blue bottom stripe, logo plate, inline regime badge
+                                             with animated dotPulse dot, mode toggle (persisted to localStorage).
+                                             Sidebar: Today / Earlier grouped sections + Quick Ask chips (fire full question).
+                                             Welcome state: logo block + live metrics row (Volume/Regime/Anomaly/Foreign Net)
+                                             + 4 categorised chip rows (Market/Flows/Regime/GCC).
+                                             ChatWindow: assistant bubble has border-left: 2px solid --qse-blue.
+                                             Gradient anomaly bar (barFill animation) + "Anomalous" maroon badge.
+                                             ModelStatus: chip-style model + feedback count badges.
+                                             RegimeBadge: flat inline (no pill), animated dot, trend + vol + percentile.
+                                             RegimeHistory: dual timelines (Trend + Vol), dominant vol per trend span.
+                                             All sub-component CSS migrated from --navy-*/--surface/--gold to new tokens.
+                                             NOTE: ui/public/qse_logo.png must be placed manually (not in repo).
+- ui/src/ErrorBoundary.jsx: class-based React ErrorBoundary wrapping App; red error screen with "Try again".
+- App.jsx: apiDown banner when /features/today unreachable; theme toggle; pendingSend for Quick Ask chips.
 
 ## feedback/store.py — implementation notes
 - feedback_counts() returns a dict with one key per feedback_type (count) PLUS a
@@ -368,25 +378,32 @@ GET /anomaly/{date}, POST /feedback, GET /models/status, GET /health
   Symlink: models/vol_hmm/vol_hmm_current  (or .ptr file on Windows without dev mode)
 
 ## ui/ — implementation notes
-- ChatWindow date-aware queries: parseDateFromQuestion() extracts ISO dates (YYYY-MM-DD)
-  and relative terms (yesterday, last Tuesday, last week, last month) from question text.
-  Detected date shown as a yellow chip above the input; ✕ dismisses it without using it.
-  When send() fires, effectiveDate is used in the API call and onDateChange syncs the header
-  date picker. The detected date also appears as "data: YYYY-MM-DD" in the response meta.
-- ChatWindow passes onDateChange={setDate} from App.jsx — always wire this prop.
-- RegimeBadge renders two pills: trend (green/red/amber) + vol (teal=low_vol, purple=high_vol).
-  Vol pill shows the volatility_20d percentile rank.
-- RegimeInline (inside ChatWindow message bubble) shows both regimes separated by a | divider.
+- CSS token system (ui/src/index.css): dual-mode via [data-theme="dark"] and [data-theme="light"].
+  NEVER use old tokens: --navy, --navy-dark, --navy-light, --surface, --surface-2, --gold, --gold-light,
+  --maroon-light. Use: --bg-*, --border, --border-sub, --text, --text-body, --text-muted, --text-dim,
+  --qse-blue, --qse-maroon, --amber, --green, --red. Legacy aliases bridged in index.css but deprecated.
+  Theme default is "dark" (set on <html data-theme="dark">); user toggle persists to localStorage.
+- App.jsx: theme toggle button flips document.documentElement.dataset.theme + localStorage.
+  apiDown banner shows when /features/today fails. pendingSend state passes Quick Ask chip questions
+  to ChatWindow without the user typing. todayMetrics passed from /features/today response to welcome state.
+- Sidebar: Today section (queries matching today's date) + Earlier section (older dates) + Quick Ask chips.
+  activeIdx always tracks index 0 of history array (new/updated item always prepended at position 0).
+- ChatWindow: send() uses functional setState for onNewMessage callback to avoid stale closure on messages.
+  Welcome state: logo block + TodayMetrics (live from /features/today + /regime/current) + 4 chip categories.
+  Assistant bubble: border-left: 2px solid --qse-blue; user bubble: background --qse-maroon.
+  Anomaly gradient bar: linear-gradient(90deg, #C9A84C, --red) with barFill animation.
+- RegimeBadge: flat inline group (no pill border). Animated dotPulse dot. Shows trend + prob + sessions
+  + since date + vol regime + vol percentile. Returns null when API unavailable.
+- RegimeInline (inside ChatWindow message bubble) shows both regimes separated by | divider.
 - RegimeHistory shows two stacked timeline bars (Trend + Vol) labelled on the left.
   Vol timeline only renders when vol_regime data is present in the history rows.
   Segment list shows dominant vol regime per trend span (majority vote over span rows).
 - Teal/purple CSS vars for vol: use var(--teal,#1abc9c) and var(--purple,#9b59b6) with
-  inline fallbacks since these vars may not be defined in the global CSS.
-- Multi-turn history: send() builds conversationHistory by filtering settled (non-loading)
-  messages and slicing the last 3 with .slice(-3). The slice(-3) matches _HISTORY_TURN_LIMIT=3
-  in llm/prompts.py exactly — keep these in sync. The role filter is not needed (all messages
-  are 'user' or 'assistant' by construction). messages is the pre-send render closure, which
-  correctly excludes the in-flight turn and reflects all prior completed exchanges.
+  inline fallbacks since these vars are not in the global CSS.
+- Multi-turn history: send() passes up to 3 completed exchanges. Matches _HISTORY_TURN_LIMIT=3
+  in llm/prompts.py — keep in sync.
+- qse_logo.png: must be placed at ui/public/qse_logo.png manually (not tracked in git).
+  Used in header plate and welcome screen. Both show white background plate with border-radius.
 
 ## analytics/distribution.py — implementation notes
 - run() returns skewness, kurtosis, and percentiles (p25/p50/p75) in addition to

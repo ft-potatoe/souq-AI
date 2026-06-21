@@ -4,211 +4,117 @@ import AnomalyIndicator from './AnomalyIndicator';
 import SimilarityCard from './SimilarityCard';
 import SimilarityChart from './SimilarityChart';
 import AnalyticsPanel from './AnalyticsPanel';
-import ClusteringCard from './ClusteringCard';
-import RelationshipsCard from './RelationshipsCard';
 import './ChatWindow.css';
 
-const SUGGESTED_QUESTIONS = [
-  'Was today unusual or anomalous?',
-  'What similar sessions have occurred historically?',
-  'What is the current market regime?',
-  'How does today compare to GCC peers?',
-  'What are the foreign investor flows today?',
-  'How does today\'s return rank historically?',
-  'What was the regime on 2024-06-15?',
-  'Was volume unusual last Tuesday?',
+// ── Categorised welcome chips ─────────────────────────────────────────────────
+const CHIP_CATEGORIES = [
+  {
+    label: 'Market',
+    chips: ["Was today's volume unusual?", "How does today's return rank?"],
+  },
+  {
+    label: 'Flows',
+    chips: ['Foreign investor flows today?', 'Who is driving the market?'],
+  },
+  {
+    label: 'Regime',
+    chips: ['What is the current market regime?', 'Similar historical sessions?'],
+  },
+  {
+    label: 'GCC',
+    chips: ['How does QSE compare to peers?', 'Decoupled from GCC today?'],
+  },
 ];
 
-// Day names (QSE week is Sun-Thu; Fri/Sat are non-trading days)
-const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-
-/**
- * Try to extract an explicit ISO date or relative date from a question string.
- * Returns a YYYY-MM-DD string, or null if nothing recognized.
- */
-function parseDateFromQuestion(question, headerDate) {
-  const q = question.toLowerCase();
-  const today = headerDate ? new Date(headerDate + 'T00:00:00') : new Date();
-  today.setHours(0, 0, 0, 0);
-
-  // Explicit ISO date: 2024-06-15
-  const isoMatch = question.match(/\b(\d{4}-\d{2}-\d{2})\b/);
-  if (isoMatch) return isoMatch[1];
-
-  // "yesterday"
-  if (/\byesterday\b/.test(q)) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - 1);
-    return d.toISOString().slice(0, 10);
-  }
-
-  // "last week" / "last month"
-  if (/\blast\s+week\b/.test(q)) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - 7);
-    return d.toISOString().slice(0, 10);
-  }
-  if (/\blast\s+month\b/.test(q)) {
-    const d = new Date(today);
-    d.setMonth(d.getMonth() - 1);
-    return d.toISOString().slice(0, 10);
-  }
-
-  // "last <dayname>" or "on <dayname>"
-  const dayMatch = q.match(/\b(?:last\s+|on\s+)?(monday|tuesday|wednesday|thursday|sunday)\b/);
-  if (dayMatch) {
-    const targetDay = DAY_NAMES.indexOf(dayMatch[1]); // 0=Sun
-    const d = new Date(today);
-    // Step back until we hit the right day-of-week, max 7 days
-    for (let i = 1; i <= 7; i++) {
-      d.setDate(d.getDate() - 1);
-      if (d.getDay() === targetDay) return d.toISOString().slice(0, 10);
-    }
-  }
-
-  return null;
-}
-
-function ThumbButtons({ onUp, onDown, voted }) {
+// ── Metrics row ───────────────────────────────────────────────────────────────
+function MetricCell({ label, value, sub, valueColor, subColor, noBorder }) {
   return (
-    <div className="thumb-buttons">
-      <button
-        className={`thumb-btn ${voted === 'up' ? 'thumb-btn--active-up' : ''}`}
-        onClick={onUp}
-        disabled={voted != null}
-        title="Helpful"
-      >
-        &#128077;
-      </button>
-      <button
-        className={`thumb-btn ${voted === 'down' ? 'thumb-btn--active-down' : ''}`}
-        onClick={onDown}
-        disabled={voted != null}
-        title="Not helpful"
-      >
-        &#128078;
-      </button>
+    <div className={`metric-cell${noBorder ? ' metric-cell--last' : ''}`}>
+      <span className="metric-label">{label}</span>
+      <span className="metric-value" style={{ color: valueColor }}>{value ?? '—'}</span>
+      {sub && <span className="metric-sub" style={{ color: subColor }}>{sub}</span>}
     </div>
   );
 }
 
-// Parse a markdown table row into cell strings
-function parseTableRow(line) {
-  return line.replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+function TodayMetrics({ metrics, regime }) {
+  if (!metrics && !regime) return null;
+
+  const vol = metrics?.volume != null
+    ? (metrics.volume / 1e6).toFixed(1) + 'M'
+    : null;
+  const volPct = metrics?.volume_zscore != null
+    ? `z-score ${metrics.volume_zscore.toFixed(1)}`
+    : null;
+
+  const anomScore = metrics?.anomaly_score != null
+    ? Math.round(metrics.anomaly_score * 100) + '%'
+    : null;
+
+  const fnet = metrics?.foreign_net != null
+    ? (metrics.foreign_net >= 0 ? '+' : '') + (metrics.foreign_net / 1e6).toFixed(1) + 'M'
+    : null;
+
+  const regimeLabel = regime?.current_regime ?? metrics?.regime;
+  const regimeProb = regime?.regime_probability != null
+    ? Math.round(regime.regime_probability * 100) + '%'
+    : null;
+  const regimeSessions = regime?.sessions_in_current_regime;
+
+  const REGIME_COLORS = { bull: 'var(--green)', bear: 'var(--red)', sideways: 'var(--amber)' };
+  const regColor = REGIME_COLORS[regimeLabel] ?? 'var(--text-muted)';
+
+  return (
+    <div className="today-metrics-wrap">
+      <div className="today-metrics-title">Today's Session Overview</div>
+      <div className="today-metrics-row">
+        {vol && (
+          <MetricCell
+            label="Volume"
+            value={vol}
+            sub={volPct}
+            valueColor="var(--text)"
+            subColor="var(--green)"
+          />
+        )}
+        {regimeLabel && (
+          <MetricCell
+            label="Regime"
+            value={regimeLabel.charAt(0).toUpperCase() + regimeLabel.slice(1)}
+            sub={[regimeProb, regimeSessions ? `${regimeSessions} sessions` : null].filter(Boolean).join(' · ')}
+            valueColor={regColor}
+            subColor="var(--text-muted)"
+          />
+        )}
+        {anomScore && (
+          <MetricCell
+            label="Anomaly Score"
+            value={anomScore}
+            sub="Check anomaly details"
+            valueColor="var(--red)"
+            subColor="var(--qse-maroon)"
+          />
+        )}
+        {fnet && (
+          <MetricCell
+            label="Foreign Net"
+            value={fnet}
+            sub={metrics?.foreign_net >= 0 ? 'Net buying' : 'Net selling'}
+            valueColor={metrics?.foreign_net >= 0 ? 'var(--green)' : 'var(--red)'}
+            subColor="var(--text-muted)"
+            noBorder
+          />
+        )}
+      </div>
+    </div>
+  );
 }
 
-function isTableSeparator(line) {
-  return /^\|?[\s\-|:]+\|?$/.test(line) && /--/.test(line);
-}
-
-// Minimal markdown-like renderer: **bold**, *italic*, `code`, bullet lists, numbered lists, tables
-function MsgText({ text }) {
-  if (!text) return null;
-
-  const lines = text.split('\n');
-  const elements = [];
-  let i = 0;
-
-  while (i < lines.length) {
-    const line = lines[i];
-
-    // Markdown table: detect header row followed by separator
-    if (/^\|/.test(line) && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
-      const headers = parseTableRow(line);
-      i += 2; // skip header + separator
-      const rows = [];
-      while (i < lines.length && /^\|/.test(lines[i])) {
-        rows.push(parseTableRow(lines[i]));
-        i++;
-      }
-      elements.push(
-        <div key={`tbl-${i}`} className="msg-table-wrap">
-          <table className="msg-table">
-            <thead>
-              <tr>{headers.map((h, j) => <th key={j}><InlineText text={h} /></th>)}</tr>
-            </thead>
-            <tbody>
-              {rows.map((row, ri) => (
-                <tr key={ri}>
-                  {row.map((cell, ci) => <td key={ci}><InlineText text={cell} /></td>)}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      );
-      continue;
-    }
-
-    // Numbered list
-    if (/^\d+\.\s/.test(line)) {
-      const items = [];
-      while (i < lines.length && /^\d+\.\s/.test(lines[i])) {
-        items.push(lines[i].replace(/^\d+\.\s/, ''));
-        i++;
-      }
-      elements.push(
-        <ol key={`ol-${i}`} className="msg-list msg-list--ol">
-          {items.map((it, j) => <li key={j}><InlineText text={it} /></li>)}
-        </ol>
-      );
-      continue;
-    }
-
-    // Bullet list
-    if (/^[-*]\s/.test(line)) {
-      const items = [];
-      while (i < lines.length && /^[-*]\s/.test(lines[i])) {
-        items.push(lines[i].replace(/^[-*]\s/, ''));
-        i++;
-      }
-      elements.push(
-        <ul key={`ul-${i}`} className="msg-list msg-list--ul">
-          {items.map((it, j) => <li key={j}><InlineText text={it} /></li>)}
-        </ul>
-      );
-      continue;
-    }
-
-    // Heading (###)
-    if (/^#{1,3}\s/.test(line)) {
-      const level = line.match(/^(#+)/)[1].length;
-      const content = line.replace(/^#+\s/, '');
-      const Tag = `h${Math.min(level + 3, 6)}`;
-      elements.push(
-        <Tag key={`h-${i}`} className={`msg-heading msg-heading--${level}`}>
-          <InlineText text={content} />
-        </Tag>
-      );
-      i++;
-      continue;
-    }
-
-    // Empty line
-    if (!line.trim()) {
-      elements.push(<div key={`sp-${i}`} className="msg-spacer" />);
-      i++;
-      continue;
-    }
-
-    // Normal paragraph
-    elements.push(
-      <p key={`p-${i}`} className="msg-para">
-        <InlineText text={line} />
-      </p>
-    );
-    i++;
-  }
-
-  return <div className="msg-text">{elements}</div>;
-}
-
+// ── Markdown-like text renderer ───────────────────────────────────────────────
 function InlineText({ text }) {
-  // split on **bold**, *italic*, `code`
   const parts = [];
   const re = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g;
-  let last = 0;
-  let m;
+  let last = 0, m;
   while ((m = re.exec(text)) !== null) {
     if (m.index > last) parts.push({ type: 'text', content: text.slice(last, m.index) });
     const raw = m[0];
@@ -231,26 +137,84 @@ function InlineText({ text }) {
   );
 }
 
-const TREND_COLORS = { bull: 'var(--green)', bear: 'var(--red)', sideways: 'var(--amber)' };
-const VOL_COLORS = { low_vol: 'var(--teal,#1abc9c)', high_vol: 'var(--purple,#9b59b6)' };
-const VOL_LABELS = { low_vol: 'Low Vol', high_vol: 'High Vol' };
+function MsgText({ text }) {
+  if (!text) return null;
+  const lines = text.split('\n');
+  const elements = [];
+  let i = 0;
 
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (/^\d+\.\s/.test(line)) {
+      const items = [];
+      while (i < lines.length && /^\d+\.\s/.test(lines[i])) {
+        items.push(lines[i].replace(/^\d+\.\s/, ''));
+        i++;
+      }
+      elements.push(
+        <ol key={`ol-${i}`} className="msg-list msg-list--ol">
+          {items.map((it, j) => <li key={j}><InlineText text={it} /></li>)}
+        </ol>
+      );
+      continue;
+    }
+
+    if (/^[-*]\s/.test(line)) {
+      const items = [];
+      while (i < lines.length && /^[-*]\s/.test(lines[i])) {
+        items.push(lines[i].replace(/^[-*]\s/, ''));
+        i++;
+      }
+      elements.push(
+        <ul key={`ul-${i}`} className="msg-list msg-list--ul">
+          {items.map((it, j) => <li key={j}><InlineText text={it} /></li>)}
+        </ul>
+      );
+      continue;
+    }
+
+    if (/^#{1,3}\s/.test(line)) {
+      const level = line.match(/^(#+)/)[1].length;
+      const content = line.replace(/^#+\s/, '');
+      const Tag = `h${Math.min(level + 3, 6)}`;
+      elements.push(
+        <Tag key={`h-${i}`} className={`msg-heading msg-heading--${level}`}>
+          <InlineText text={content} />
+        </Tag>
+      );
+      i++;
+      continue;
+    }
+
+    if (!line.trim()) {
+      elements.push(<div key={`sp-${i}`} className="msg-spacer" />);
+      i++;
+      continue;
+    }
+
+    elements.push(
+      <p key={`p-${i}`} className="msg-para">
+        <InlineText text={line} />
+      </p>
+    );
+    i++;
+  }
+
+  return <div className="msg-text">{elements}</div>;
+}
+
+// ── Regime inline strip ───────────────────────────────────────────────────────
 function RegimeInline({ regime }) {
   if (!regime) return null;
-  const tColor = TREND_COLORS[regime.current_regime] ?? 'var(--text-muted)';
+  const COLORS = { bull: 'var(--green)', bear: 'var(--red)', sideways: 'var(--amber)' };
+  const color = COLORS[regime.current_regime] ?? 'var(--text-muted)';
   const prob = regime.regime_probability != null ? Math.round(regime.regime_probability * 100) : null;
-
-  const vColor = VOL_COLORS[regime.vol_regime] ?? null;
-  const vLabel = VOL_LABELS[regime.vol_regime] ?? null;
-  const volPct = regime.volatility_20d_percentile != null
-    ? Math.round(regime.volatility_20d_percentile)
-    : null;
 
   return (
     <div className="regime-inline">
-      {/* Trend pill */}
-      <span className="regime-inline-dot" style={{ background: tColor }} />
-      <span className="regime-inline-label" style={{ color: tColor }}>
+      <span className="regime-inline-dot" style={{ background: color }} />
+      <span className="regime-inline-label" style={{ color }}>
         {regime.current_regime?.charAt(0).toUpperCase() + regime.current_regime?.slice(1)} regime
       </span>
       {prob != null && <span className="regime-inline-prob">{prob}%</span>}
@@ -260,24 +224,51 @@ function RegimeInline({ regime }) {
       {regime.regime_start_date && (
         <span className="regime-inline-meta">since {regime.regime_start_date}</span>
       )}
+    </div>
+  );
+}
 
-      {/* Vol regime pill — separated by a divider */}
-      {vColor && (
-        <>
-          <span className="regime-inline-divider">|</span>
-          <span className="regime-inline-dot" style={{ background: vColor }} />
-          <span className="regime-inline-label" style={{ color: vColor }}>{vLabel}</span>
-          {volPct != null && (
-            <span className="regime-inline-meta" style={{ color: vColor, opacity: 0.85 }}>
-              {volPct}th pct
-            </span>
-          )}
-        </>
+// ── Anomaly score bar ─────────────────────────────────────────────────────────
+function AnomalyBar({ assessment }) {
+  if (!assessment) return null;
+  const pct = Math.round(assessment.anomaly_score * 100);
+  const isAnom = assessment.anomaly_score > 0.65;
+  return (
+    <div className="anomaly-bar-wrap">
+      <span className="anomaly-bar-label">Anomaly Score</span>
+      <div className="anomaly-bar-track">
+        <div
+          className="anomaly-bar-fill"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <span className="anomaly-bar-value" style={{ color: isAnom ? 'var(--red)' : 'var(--amber)' }}>
+        {pct}%
+      </span>
+      {isAnom && (
+        <span className="anomaly-bar-badge">Anomalous</span>
       )}
     </div>
   );
 }
 
+// ── Thumbs ────────────────────────────────────────────────────────────────────
+function ThumbButtons({ onUp, onDown, voted }) {
+  return (
+    <div className="thumb-buttons">
+      <button
+        className={`thumb-btn ${voted === 'up' ? 'thumb-btn--active-up' : ''}`}
+        onClick={onUp} disabled={voted != null} title="Helpful"
+      >&#128077;</button>
+      <button
+        className={`thumb-btn ${voted === 'down' ? 'thumb-btn--active-down' : ''}`}
+        onClick={onDown} disabled={voted != null} title="Not helpful"
+      >&#128078;</button>
+    </div>
+  );
+}
+
+// ── Message ───────────────────────────────────────────────────────────────────
 function Message({ msg, date }) {
   const [voted, setVoted] = useState(null);
 
@@ -293,27 +284,23 @@ function Message({ msg, date }) {
           question: msg.question,
         }),
       });
-    } catch {
-      // silent
-    }
+    } catch { /* silent */ }
   }
 
   if (msg.role === 'user') {
     return (
-      <div className="msg msg--user">
+      <div className="msg msg--user" style={{ animation: 'fadeUp 0.3s ease both' }}>
         <div className="msg-bubble msg-bubble--user">{msg.text}</div>
       </div>
     );
   }
 
-  const similarity = msg.payload?.similarity ?? [];
+  const similarity        = msg.payload?.similarity ?? [];
   const anomalyAssessment = msg.payload?.anomaly ?? null;
-  const regime = msg.payload?.regime ?? null;
-  const clustering = msg.payload?.clustering ?? null;
-  const relationships = msg.payload?.relationships ?? null;
+  const regime            = msg.payload?.regime ?? null;
 
   return (
-    <div className="msg msg--assistant">
+    <div className="msg msg--assistant" style={{ animation: 'fadeUp 0.4s 0.14s ease both' }}>
       <div className="msg-bubble msg-bubble--assistant">
         {msg.loading ? (
           <span className="msg-loading"><span /><span /><span /></span>
@@ -323,9 +310,8 @@ function Message({ msg, date }) {
             <MsgText text={msg.text} />
             <ThumbButtons voted={voted} onUp={() => vote('up')} onDown={() => vote('down')} />
 
-            {anomalyAssessment && (
-              <AnomalyIndicator assessment={anomalyAssessment} />
-            )}
+            {anomalyAssessment && <AnomalyBar assessment={anomalyAssessment} />}
+            {anomalyAssessment && <AnomalyIndicator assessment={anomalyAssessment} />}
             {anomalyAssessment?.anomaly_score > 0.65 && (
               <AnomalyFeedback date={date} score={anomalyAssessment.anomaly_score} />
             )}
@@ -342,19 +328,16 @@ function Message({ msg, date }) {
               </div>
             )}
 
-            {clustering && <ClusteringCard clustering={clustering} />}
-            {relationships && <RelationshipsCard relationships={relationships} />}
-
             {msg.payload && <AnalyticsPanel payload={msg.payload} />}
 
-            <div className="msg-meta">
-              {msg.payload?.data_date && (
-                <span className="msg-meta-date">data: {msg.payload.data_date}</span>
-              )}
-              {msg.payload?.response_time_ms != null && (
+            {msg.payload?.response_time_ms != null && (
+              <div className="msg-meta">
+                {msg.payload.data_date && (
+                  <span className="msg-meta-date">data: {msg.payload.data_date}</span>
+                )}
                 <span>{msg.payload.response_time_ms.toFixed(0)} ms</span>
-              )}
-            </div>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -362,13 +345,26 @@ function Message({ msg, date }) {
   );
 }
 
-export default function ChatWindow({ date, disabled, onNewMessage, onDateChange, activeHistoryItem }) {
+// ── ChatWindow ────────────────────────────────────────────────────────────────
+export default function ChatWindow({
+  date, disabled, onNewMessage,
+  activeHistoryItem, todayMetrics,
+  pendingSend, onPendingSendConsumed,
+}) {
   const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [detectedDate, setDetectedDate] = useState(null);
+  const [input, setInput]       = useState('');
+  const [loading, setLoading]   = useState(false);
+  const [regime, setRegime]     = useState(null);
   const bottomRef = useRef(null);
-  const inputRef = useRef(null);
+  const inputRef  = useRef(null);
+
+  // Fetch regime for welcome metrics
+  useEffect(() => {
+    fetch('http://localhost:8000/regime/current')
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(setRegime)
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (activeHistoryItem) setMessages(activeHistoryItem.messages);
@@ -378,74 +374,60 @@ export default function ChatWindow({ date, disabled, onNewMessage, onDateChange,
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Re-detect date whenever input changes
+  // Consume pendingSend from sidebar Quick Ask
   useEffect(() => {
-    const parsed = parseDateFromQuestion(input, date);
-    setDetectedDate(parsed && parsed !== date ? parsed : null);
-  }, [input, date]);
+    if (pendingSend && !loading && date && !disabled) {
+      send(pendingSend);
+      onPendingSendConsumed?.();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingSend]);
 
   async function send(question) {
     const q = (question ?? input).trim();
     if (!q || loading || !date || disabled) return;
-
-    // If a date was detected in the question, use it; also sync the header picker
-    const parsedFromQ = parseDateFromQuestion(q, date);
-    const effectiveDate = (parsedFromQ && parsedFromQ !== date) ? parsedFromQ : date;
-    if (parsedFromQ && parsedFromQ !== date && onDateChange) {
-      onDateChange(parsedFromQ);
-    }
-
     setInput('');
-    setDetectedDate(null);
     setLoading(true);
 
-    const userMsg = { role: 'user', text: q };
+    const userMsg   = { role: 'user', text: q };
     const placeholder = { role: 'assistant', text: '', loading: true, payload: null };
     setMessages(prev => [...prev, userMsg, placeholder]);
 
     try {
-      // Build conversation history from the last 3 settled (non-loading) turns
-      const conversationHistory = messages
-        .filter(m => !m.loading)
-        .slice(-3)
-        .map(m => ({ role: m.role, content: m.text }));
-
       const res = await fetch('http://localhost:8000/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: q, date: effectiveDate, conversation_history: conversationHistory }),
+        body: JSON.stringify({ question: q, date }),
       });
-      const data = res.ok ? await res.json() : null;
+      const data   = res.ok ? await res.json() : null;
       const answer = data?.answer ?? 'No response received.';
       const payload = data ? {
-        similarity: data.similarity_results ?? [],
-        anomaly: data.anomaly_assessment ?? null,
-        regime: data.regime_context ?? null,
+        similarity:     data.similarity_results ?? [],
+        anomaly:        data.anomaly_assessment ?? null,
+        regime:         data.regime_context ?? null,
         analytics_used: data.analytics_used ?? [],
-        data_date: data.data_date,
+        data_date:      data.data_date,
         response_time_ms: data.response_time_ms,
-        // pass structured analytics buckets through for AnalyticsPanel
-        ...buildAnalyticsBuckets(data),
       } : null;
 
       setMessages(prev => {
         const next = [...prev];
-        const idx = next.findLastIndex(m => m.loading);
+        const idx  = next.findLastIndex(m => m.loading);
         if (idx !== -1) next[idx] = { role: 'assistant', text: answer, loading: false, payload };
+        onNewMessage?.({
+          question: q, answer, date,
+          messages: next,
+        });
         return next;
-      });
-
-      onNewMessage?.({
-        question: q,
-        answer,
-        date: effectiveDate,
-        messages: [...messages, userMsg, { role: 'assistant', text: answer, loading: false, payload }],
       });
     } catch {
       setMessages(prev => {
         const next = [...prev];
-        const idx = next.findLastIndex(m => m.loading);
-        if (idx !== -1) next[idx] = { role: 'assistant', text: 'Error: could not reach the API.', loading: false, payload: null };
+        const idx  = next.findLastIndex(m => m.loading);
+        if (idx !== -1) {
+          next[idx] = { role: 'assistant', text: 'Error: could not reach the API.', loading: false, payload: null };
+          onNewMessage?.({ question: q, answer: next[idx].text, date, messages: next });
+        }
         return next;
       });
     } finally {
@@ -455,10 +437,7 @@ export default function ChatWindow({ date, disabled, onNewMessage, onDateChange,
   }
 
   function onKeyDown(e) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      send();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
   }
 
   const isEmpty = messages.length === 0;
@@ -466,52 +445,65 @@ export default function ChatWindow({ date, disabled, onNewMessage, onDateChange,
   return (
     <div className="chat-window">
       <div className="chat-messages">
-        {isEmpty && (
+        {isEmpty ? (
           <div className="chat-empty">
-            <div className="chat-empty-icon">&#128202;</div>
-            <div className="chat-empty-title">QSE Market Copilot</div>
-            <div className="chat-empty-sub">Ask a natural language question about QSE market activity.</div>
+            {/* Logo block */}
+            <div className="welcome-logo-block">
+              <img src="/qse_logo.png" className="welcome-logo" alt="QSE" />
+              <div className="welcome-exchange">Qatar Stock Exchange</div>
+              <h1 className="welcome-title">Market Copilot</h1>
+              <p className="welcome-sub">
+                Natural language market intelligence. Every answer is analytics-backed — no hallucinated figures.
+              </p>
+            </div>
+
+            {/* Metrics row */}
             {!disabled && (
-              <div className="chat-suggestions">
-                {SUGGESTED_QUESTIONS.map((q, i) => (
-                  <button
-                    key={i}
-                    className="chat-suggestion-chip"
-                    onClick={() => send(q)}
-                    disabled={loading}
-                  >
-                    {q}
-                  </button>
+              <TodayMetrics metrics={todayMetrics} regime={regime} />
+            )}
+
+            {/* Categorised chips */}
+            {!disabled && (
+              <div className="chip-categories">
+                {CHIP_CATEGORIES.map(cat => (
+                  <div key={cat.label} className="chip-row">
+                    <span className="chip-category-label">{cat.label}</span>
+                    <div className="chip-list">
+                      {cat.chips.map(q => (
+                        <button
+                          key={q}
+                          className="welcome-chip"
+                          onClick={() => send(q)}
+                          disabled={loading}
+                        >
+                          {q}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
           </div>
+        ) : (
+          messages.map((msg, i) => (
+            <Message key={i} msg={msg} date={date} />
+          ))
         )}
-        {messages.map((msg, i) => (
-          <Message key={i} msg={msg} date={date} />
-        ))}
         <div ref={bottomRef} />
       </div>
+
+      {/* Input area */}
       <div className="chat-input-area">
-        {detectedDate && (
-          <div className="date-detect-chip">
-            Querying <strong>{detectedDate}</strong>
-            <button
-              className="date-detect-dismiss"
-              title="Use header date instead"
-              onClick={() => setDetectedDate(null)}
-            >&#x2715;</button>
-          </div>
-        )}
         <div className="chat-input-row">
-          <textarea
+          <input
             ref={inputRef}
+            type="text"
             className="chat-input"
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder={disabled ? 'Loading session date...' : 'Ask about market activity, trends, anomalies... (Enter to send)'}
-            rows={2}
+            placeholder={disabled ? 'Loading session date…' : 'Ask about market activity, trends, anomalies…'}
             disabled={loading || disabled}
           />
           <button
@@ -521,18 +513,10 @@ export default function ChatWindow({ date, disabled, onNewMessage, onDateChange,
           >
             {loading ? (
               <span className="send-loading"><span /><span /><span /></span>
-            ) : 'Send'}
+            ) : 'Send →'}
           </button>
         </div>
       </div>
     </div>
   );
-}
-
-// Pull analytics bucket results out of the API response for AnalyticsPanel / cards
-function buildAnalyticsBuckets(data) {
-  const buckets = {};
-  if (data.clustering_result) buckets.clustering = data.clustering_result;
-  if (data.relationships_result) buckets.relationships = data.relationships_result;
-  return buckets;
 }

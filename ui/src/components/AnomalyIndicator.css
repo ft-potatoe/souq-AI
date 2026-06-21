@@ -1,9 +1,9 @@
 .anomaly-indicator {
   margin-top: 12px;
   padding: 12px 14px;
-  background: var(--navy-dark);
+  background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
 }
 
 .ai-header {

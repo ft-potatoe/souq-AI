@@ -1,6 +1,14 @@
 import { useEffect, useState } from 'react';
 import './ModelStatus.css';
 
+const FEEDBACK_ICONS = {
+  thumbs_up: '👍',
+  thumbs_down: '👎',
+  anomaly_confirm: '✓ confirm',
+  anomaly_reject: '✗ reject',
+  similarity_rating: '★ sim',
+};
+
 export default function ModelStatus() {
   const [data, setData] = useState(null);
 
@@ -15,35 +23,36 @@ export default function ModelStatus() {
 
   const feedback = data.feedback_counts ?? {};
   const feedbackEntries = Object.entries(feedback).filter(([k]) => k !== 'since');
-  const since = feedback.since
-    ? new Date(feedback.since).toLocaleDateString('en-GB')
+  const lastRetrain = data.last_retrain
+    ? new Date(data.last_retrain).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' })
     : null;
 
   return (
     <div className="model-status">
-      {data.models && Object.entries(data.models).map(([name, info]) => (
-        <span key={name} className="ms-model">
-          <span className="ms-name">{name}</span>
-          {info.version && <span className="ms-version">v{info.version}</span>}
-        </span>
-      ))}
-      {feedbackEntries.length > 0 && (
-        <span className="ms-sep" />
-      )}
-      {feedbackEntries.map(([type, count]) => (
-        <span key={type} className="ms-feedback">
-          {type}: {count}
-        </span>
-      ))}
-      {data.last_retrain && (
-        <>
-          <span className="ms-sep" />
-          <span className="ms-retrain">
-            retrained {new Date(data.last_retrain).toLocaleDateString('en-GB')}
-            {since && ` · feedback since ${since}`}
+      <div className="ms-left">
+        {data.models && Object.entries(data.models).map(([name, info]) => (
+          <span key={name} className="ms-model-chip">
+            <span className="ms-name">{name.replace(/_/g, ' ')}</span>
+            {info.version && <span className="ms-version">{info.version}</span>}
+            {info.deployed_at && (
+              <span className="ms-deployed">
+                {new Date(info.deployed_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+              </span>
+            )}
           </span>
-        </>
-      )}
+        ))}
+      </div>
+
+      <div className="ms-right">
+        {feedbackEntries.map(([type, count]) => (
+          <span key={type} className="ms-feedback-chip">
+            {FEEDBACK_ICONS[type] ?? type} {count}
+          </span>
+        ))}
+        {lastRetrain && (
+          <span className="ms-retrain">retrained {lastRetrain}</span>
+        )}
+      </div>
     </div>
   );
 }

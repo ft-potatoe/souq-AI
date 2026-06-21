@@ -45,7 +45,7 @@ export default function AnomalyIndicator({ assessment }) {
               <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
               <RadialBar
                 dataKey="value"
-                background={{ fill: 'var(--surface-2)' }}
+                background={{ fill: 'var(--bg-surface-2)' }}
                 cornerRadius={4}
               />
             </RadialBarChart>

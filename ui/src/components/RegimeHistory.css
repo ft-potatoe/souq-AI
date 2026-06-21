@@ -1,6 +1,5 @@
 .regime-history {
-  border-top: 1px solid var(--border);
-  background: var(--navy-dark);
+  background: var(--bg-sidebar);
 }
 
 .rh-toggle {
@@ -19,7 +18,7 @@
 }
 
 .rh-toggle:hover {
-  background: var(--surface);
+  background: var(--bg-surface);
 }
 
 .rh-chevron {

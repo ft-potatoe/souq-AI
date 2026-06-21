@@ -32,6 +32,7 @@ from api.models import (
     RelationshipsResult,
 )
 from api._dates import resolve_date, model_versions_snapshot
+from api._daterange import extract_date_range, extract_single_date as _extract_single_date
 
 log = logging.getLogger(__name__)
 
@@ -56,9 +57,16 @@ _ANALYTICS_DISPATCH: dict[str, Any] = {
 async def post_query(req: QueryRequest) -> QueryResponse:
     t0 = time.perf_counter()
 
-    # Resolve date
+    # Resolve date — explicit req.date takes priority; if absent, try to parse
+    # a specific target date directly from the question ("on 3 June 2026") before
+    # falling back to the latest available row.
+    _req_date = req.date
+    if _req_date is None:
+        _q_single = _extract_single_date(req.question)
+        if _q_single:
+            _req_date = _q_single
     try:
-        data_date = resolve_date(req.date)
+        data_date = resolve_date(_req_date)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -73,7 +81,6 @@ async def post_query(req: QueryRequest) -> QueryResponse:
     analytics_used: list[str] = []
 
     # Extract date range once — shared by flows, correlation, and seasonality
-    from api._daterange import extract_date_range
     _q_lower_dr = req.question.lower()
     d_from, d_to = extract_date_range(req.question, data_date)
     # "total/overall/historically/all time/entire dataset" → full history
@@ -99,6 +106,22 @@ async def post_query(req: QueryRequest) -> QueryResponse:
             params = {**params, "gcc": {"date_from": d_from}}
         if "relationships" in matched and "relationships" not in params:
             params = {**params, "relationships": {"date_from": d_from}}
+
+    # When relationships is the primary intent and flows co-fired only because the
+    # question mentions "foreign"/"selling"/"buying" as the subject of a co-movement
+    # question (e.g. "when foreign selling rises, what happens to breadth?"), drop
+    # flows from matched — it adds irrelevant rolling-window data that crowds out
+    # the relationship payload and confuses the LLM.
+    _RELATIONSHIP_INTENT_KWS = [
+        "usually when", "tends to", "what happens to", "what drives",
+        "what moves with", "when x goes", "what affects", "what tends to happen",
+        "discover relationship", "scan relationship", "hidden relationship",
+        "what's associated", "what is associated", "inverse relationship",
+    ]
+    if "relationships" in matched and "flows" in matched:
+        _ql_rel = req.question.lower()
+        if any(kw in _ql_rel for kw in _RELATIONSHIP_INTENT_KWS):
+            matched = [b for b in matched if b != "flows"]
 
     # When both volatility_regime and flows are matched, auto-add relationships
     # so conditional_decile can answer "who dominates during low/high vol?" by
@@ -163,20 +186,20 @@ async def post_query(req: QueryRequest) -> QueryResponse:
         if "threshold" not in dist_params:
             _ql = req.question.lower()
             _drop_m = _re.search(
-                r"how many\s+(?:days?|sessions?|times?)\s+(?:fell|dropped?|declined?|were?\s+down|lost?)"
+                r"how many\s+(?:days?|sessions?|times?)\s+(?:fall|fell|drops?|dropped?|declined?|were?\s+down|lost?)"
                 r"\s+(?:more than|over|by more than|>\s*)(\d+(?:\.\d+)?)\s*%",
                 _ql,
             ) or _re.search(
-                r"(?:fell|dropped?|declined?|were?\s+down|lost?)"
+                r"(?:fall|fell|drops?|dropped?|declined?|were?\s+down|lost?)"
                 r"\s+(?:more than|over|by more than|>\s*)(\d+(?:\.\d+)?)\s*%",
                 _ql,
             )
             _rise_m = _re.search(
-                r"how many\s+(?:days?|sessions?|times?)\s+(?:rose?|gained?|were?\s+up|surged?|jumped?)"
+                r"how many\s+(?:days?|sessions?|times?)\s+(?:rises?|rose?|gains?|gained?|were?\s+up|surged?|jumped?)"
                 r"\s+(?:more than|over|>\s*)(\d+(?:\.\d+)?)\s*%",
                 _ql,
             ) or _re.search(
-                r"(?:rose?|gained?|were?\s+up|surged?|jumped?|rallied?)"
+                r"(?:rises?|rose?|gains?|gained?|were?\s+up|surged?|jumped?|rallied?)"
                 r"\s+(?:more than|over|>\s*)(\d+(?:\.\d+)?)\s*%",
                 _ql,
             )

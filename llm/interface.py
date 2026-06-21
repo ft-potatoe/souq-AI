@@ -24,7 +24,7 @@ _GROQ_MODEL = "llama-3.3-70b-versatile"
 _OLLAMA_URL = "http://localhost:11434/api/generate"
 _OLLAMA_MODEL = "qwen3:8b"
 
-_TIMEOUT = 600.0
+_TIMEOUT = 60.0
 
 
 def _strip_thinking(text: str) -> str:
